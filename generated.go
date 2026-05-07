@@ -104,7 +104,6 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerGetOsTemplateDetailsCmd(client))
 	root.AddCommand(registerGetPrivateSshKeyCmd(client))
 	root.AddCommand(registerGetPublicSshKeyCmd(client))
-	root.AddCommand(registerListAllowedFeaturesCmd(client))
 	root.AddCommand(registerListBackupSchedulesCmd(client))
 	root.AddCommand(registerListBackupsCmd(client))
 	root.AddCommand(registerListFirewallRulesCmd(client))
@@ -126,10 +125,8 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerShutdownVpsCmd(client))
 	root.AddCommand(registerStartVpsCmd(client))
 	root.AddCommand(registerStopVpsCmd(client))
-	root.AddCommand(registerSuspendVpsCmd(client))
 	root.AddCommand(registerTerminateVpsCmd(client))
 	root.AddCommand(registerTriggerReinstallCmd(client))
-	root.AddCommand(registerUnsuspendVpsCmd(client))
 	root.AddCommand(registerUpdateVpsConfigCmd(client))
 	root.AddCommand(registerUpdateFirewallRuleCmd(client))
 	root.AddCommand(registerUpdateNotificationCmd(client))
@@ -834,25 +831,6 @@ func registerGetPublicSshKeyCmd(client *Client) *cobra.Command {
 	return cmd
 }
 
-// registerListAllowedFeaturesCmd returns the cobra command for ListAllowedFeatures
-// POST /vps/list-allowed-features
-func registerListAllowedFeaturesCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "list-allowed-features",
-		Short: "Gets the allowed features and capabilities for a VPS service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/list-allowed-features", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
-	return cmd
-}
-
 // registerListBackupSchedulesCmd returns the cobra command for ListBackupSchedules
 // POST /vps/list-backup-schedules
 func registerListBackupSchedulesCmd(client *Client) *cobra.Command {
@@ -1273,29 +1251,6 @@ func registerStopVpsCmd(client *Client) *cobra.Command {
 	return cmd
 }
 
-// registerSuspendVpsCmd returns the cobra command for SuspendVps
-// POST /vps/suspend
-func registerSuspendVpsCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	var flagsuspend_reason string
-	cmd := &cobra.Command{
-		Use:   "suspend-vps",
-		Short: "[Under development] Suspends an active VPS service through WHMCS. Requires a reason for suspension",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-				"suspend_reason": flagsuspend_reason,
-			}
-			return client.Do("POST", "/vps/suspend", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
-	cmd.Flags().StringVar(&flagsuspend_reason, "suspend_reason", "", "Reason for suspending the service")
-	_ = cmd.MarkFlagRequired("suspend_reason")
-	return cmd
-}
-
 // registerTerminateVpsCmd returns the cobra command for TerminateVps
 // POST /vps/terminate
 func registerTerminateVpsCmd(client *Client) *cobra.Command {
@@ -1335,25 +1290,6 @@ func registerTriggerReinstallCmd(client *Client) *cobra.Command {
 	_ = cmd.MarkFlagRequired("service_id")
 	cmd.Flags().StringVar(&flagtemplate, "template", "", "Template identifier for the OS to reinstall")
 	_ = cmd.MarkFlagRequired("template")
-	return cmd
-}
-
-// registerUnsuspendVpsCmd returns the cobra command for UnsuspendVps
-// POST /vps/unsuspend
-func registerUnsuspendVpsCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "unsuspend-vps",
-		Short: "[Under development] Unsuspends a suspended VPS service through WHMCS. Can only unsuspend services that were suspended via API",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/unsuspend", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
 	return cmd
 }
 
