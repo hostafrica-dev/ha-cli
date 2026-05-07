@@ -27,17 +27,38 @@ export HA_TOKEN=your-bearer-token
 ## Usage
 
 ```bash
-ha --help
-ha list-vps-services
-ha get-vps-details --service_id 12345
-ha start-vps --service_id 12345
-ha stop-vps --service_id 12345
-ha reboot --service_id 12345
-ha create-backup --service_id 12345 --mode snapshot
-ha create-snapshot --service_id 12345
+./ha --help
+./ha list-vps-services
+./ha get-vps-details --service_id 12345
+./ha start-vps --service_id 12345
+./ha stop-vps --service_id 12345
+./ha reboot --service_id 12345
+./ha create-backup --service_id 12345 --mode snapshot
+./ha create-snapshot --service_id 12345
 ```
 
 All commands print pretty-printed JSON to stdout.
+
+## Shell Completion
+
+The CLI supports tab completion for all commands and flags via Cobra's built-in completion support.
+
+**Zsh:**
+```zsh
+source <(./ha completion zsh)
+```
+
+**Bash:**
+```bash
+source <(./ha completion bash)
+```
+
+**Fish:**
+```fish
+./ha completion fish | source
+```
+
+For a permanent setup, add the `source` line to your shell's rc file (e.g. `~/.zshrc`).
 
 ## Notes
 
