@@ -5,12 +5,6 @@ Command-line interface for the HostAfrica VPS API.
 ## Install
 
 ```bash
-go install github.com/hostafrica/ha-cli@latest
-```
-
-Or build from source:
-
-```bash
 git clone https://github.com/hostafrica/ha-cli
 cd ha-cli
 go build -o ha .
@@ -45,13 +39,7 @@ ha create-snapshot --service_id 12345
 
 All commands print pretty-printed JSON to stdout.
 
-## Pre-built binaries
-
-Pre-built binaries for Linux, macOS, and Windows are available on the
-[releases page](https://github.com/hostafrica/ha-cli/releases).
-
 ## Notes
 
 - `generated.go` is auto-generated from the HostAfrica OpenAPI spec. Do not edit it manually.
 - The source for the generator lives in the [ha-proxy-api](https://github.com/hostafrica/ha-proxy-api) repository.
-# ha-cli
