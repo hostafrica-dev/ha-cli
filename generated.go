@@ -32,7 +32,7 @@ func NewClient(baseURL, token string) *Client {
 // Do performs the HTTP request and pretty-prints the JSON response to stdout.
 func (c *Client) Do(method, path string, body map[string]interface{}) error {
 	var reqBody io.Reader
-	if method != "GET" {
+	if len(body) > 0 {
 		b, err := json.Marshal(body)
 		if err != nil {
 			return fmt.Errorf("failed to marshal request body: %w", err)
@@ -44,7 +44,9 @@ func (c *Client) Do(method, path string, body map[string]interface{}) error {
 	if err != nil {
 		return fmt.Errorf("failed to build request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	if reqBody != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}

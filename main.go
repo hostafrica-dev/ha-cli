@@ -21,10 +21,10 @@ Connects to a running ha-proxy-api server. Configure the target with:
   --token    (or HA_TOKEN env var)    Bearer token for authentication`,
 	}
 
-	root.PersistentFlags().StringVar(&serverURL, "server", envOr("HA_SERVER", "http://localhost:9100"), "API server base URL")
+	root.PersistentFlags().StringVar(&serverURL, "server", envOr("HA_SERVER", "https://api.hostafrica.com"), "API server base URL")
 	root.PersistentFlags().StringVar(&token, "token", envOr("HA_TOKEN", ""), "Bearer token for authentication")
 
-	client := NewClient("", "")
+	client := NewClient(serverURL, token)
 
 	root.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		if serverURL == "" {
@@ -38,6 +38,7 @@ Connects to a running ha-proxy-api server. Configure the target with:
 	RegisterGeneratedCommands(root, client)
 
 	if err := root.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
 }
