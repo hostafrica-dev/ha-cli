@@ -7,13 +7,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev"
+
 func main() {
 	var serverURL string
 	var token string
 
 	root := &cobra.Command{
-		Use:   "ha",
-		Short: "HostAfrica VPS CLI",
+		Use:     "ha",
+		Version: version,
+		Short:   "HostAfrica VPS CLI",
 		Long: `Command-line interface for the HostAfrica VPS API.
 
 Connects to a running ha-proxy-api server. Configure the target with:
