@@ -102,7 +102,6 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerGetCatalogueCmd(client))
 	root.AddCommand(registerGetVpsConfigCmd(client))
 	root.AddCommand(registerGetVpsDetailsCmd(client))
-	root.AddCommand(registerGetOsTemplateDetailsCmd(client))
 	root.AddCommand(registerGetPrivateSshKeyCmd(client))
 	root.AddCommand(registerGetPublicSshKeyCmd(client))
 	root.AddCommand(registerListBackupSchedulesCmd(client))
@@ -111,7 +110,6 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerListIsosCmd(client))
 	root.AddCommand(registerListNotificationsCmd(client))
 	root.AddCommand(registerListOrdersCmd(client))
-	root.AddCommand(registerListOsTemplatesCmd(client))
 	root.AddCommand(registerListPowerTasksCmd(client))
 	root.AddCommand(registerListReinstallOsCmd(client))
 	root.AddCommand(registerListSnapshotsCmd(client))
@@ -789,29 +787,6 @@ func registerGetVpsDetailsCmd(client *Client) *cobra.Command {
 	return cmd
 }
 
-// registerGetOsTemplateDetailsCmd returns the cobra command for GetOsTemplateDetails
-// POST /vps/get-os-template-details
-func registerGetOsTemplateDetailsCmd(client *Client) *cobra.Command {
-	var flagimageId string
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "get-os-template-details",
-		Short: "[Under development] Retrieves detailed information about a specific OS template",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"imageId": flagimageId,
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/get-os-template-details", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagimageId, "imageId", "", "Image identifier for the OS template")
-	_ = cmd.MarkFlagRequired("imageId")
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
-	return cmd
-}
-
 // registerGetPrivateSshKeyCmd returns the cobra command for GetPrivateSshKey
 // POST /vps/get-private-ssh-keys
 func registerGetPrivateSshKeyCmd(client *Client) *cobra.Command {
@@ -957,25 +932,6 @@ func registerListOrdersCmd(client *Client) *cobra.Command {
 			return client.Do("POST", "/vps/list-orders", body)
 		},
 	}
-	return cmd
-}
-
-// registerListOsTemplatesCmd returns the cobra command for ListOsTemplates
-// POST /vps/list-os-templates
-func registerListOsTemplatesCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "list-os-templates",
-		Short: "[Under development] Retrieves the list of available OS templates",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/list-os-templates", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
 	return cmd
 }
 
