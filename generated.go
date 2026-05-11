@@ -83,6 +83,7 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerDeleteRdnsRecordCmd(client))
 	root.AddCommand(registerListRdnsRecordsCmd(client))
 	root.AddCommand(registerUserChangePasswordCmd(client))
+	root.AddCommand(registerCancelVpsCmd(client))
 	root.AddCommand(registerChangePasswordCmd(client))
 	root.AddCommand(registerCreateBackupCmd(client))
 	root.AddCommand(registerCreateBackupScheduleCmd(client))
@@ -125,7 +126,6 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerShutdownVpsCmd(client))
 	root.AddCommand(registerStartVpsCmd(client))
 	root.AddCommand(registerStopVpsCmd(client))
-	root.AddCommand(registerTerminateVpsCmd(client))
 	root.AddCommand(registerTriggerReinstallCmd(client))
 	root.AddCommand(registerUpdateVpsConfigCmd(client))
 	root.AddCommand(registerUpdateFirewallRuleCmd(client))
@@ -228,6 +228,25 @@ func registerUserChangePasswordCmd(client *Client) *cobra.Command {
 	_ = cmd.MarkFlagRequired("old_password")
 	cmd.Flags().StringVar(&flagpassword, "password", "", "New password")
 	_ = cmd.MarkFlagRequired("password")
+	return cmd
+}
+
+// registerCancelVpsCmd returns the cobra command for CancelVps
+// POST /vps/cancel
+func registerCancelVpsCmd(client *Client) *cobra.Command {
+	var flagservice_id string
+	cmd := &cobra.Command{
+		Use:   "cancel-vps",
+		Short: "Cancels a VPS service through WHMCS. This action is irreversible",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"service_id": flagservice_id,
+			}
+			return client.Do("POST", "/vps/cancel", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
+	_ = cmd.MarkFlagRequired("service_id")
 	return cmd
 }
 
@@ -1244,25 +1263,6 @@ func registerStopVpsCmd(client *Client) *cobra.Command {
 				"service_id": flagservice_id,
 			}
 			return client.Do("POST", "/vps/stop", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
-	return cmd
-}
-
-// registerTerminateVpsCmd returns the cobra command for TerminateVps
-// POST /vps/terminate
-func registerTerminateVpsCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "terminate-vps",
-		Short: "[Under development] Terminates a VPS service through WHMCS. This action is irreversible",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/terminate", body)
 		},
 	}
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
