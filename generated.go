@@ -233,18 +233,21 @@ func registerUserChangePasswordCmd(client *Client) *cobra.Command {
 // POST /vps/cancel
 func registerCancelVpsCmd(client *Client) *cobra.Command {
 	var flagservice_id string
+	var flagtype string
 	cmd := &cobra.Command{
 		Use:   "cancel-vps",
 		Short: "Cancels a VPS service through WHMCS. This action is irreversible",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
 				"service_id": flagservice_id,
+				"type": flagtype,
 			}
 			return client.Do("POST", "/vps/cancel", body)
 		},
 	}
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
+	cmd.Flags().StringVar(&flagtype, "type", "", "Cancel type enum - controls when a VPS service cancellation takes effect")
 	return cmd
 }
 
