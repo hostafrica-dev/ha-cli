@@ -312,9 +312,13 @@ func registerCreateBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "create-backup-schedule",
 		Short: "Creates a new backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parseddow interface{}
+			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
+				return fmt.Errorf("invalid JSON for --dow: %w", err)
+			}
 			body := map[string]interface{}{
 				"compress": flagcompress,
-				"dow": flagdow,
+				"dow": parseddow,
 				"mailto": flagmailto,
 				"mode": flagmode,
 				"service_id": flagservice_id,
@@ -416,12 +420,16 @@ func registerCreateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "create-notification",
 		Short: "Creates a new notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parsedemail_address interface{}
+			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
+				return fmt.Errorf("invalid JSON for --email_address: %w", err)
+			}
 			body := map[string]interface{}{
 				"cpu_usage": flagcpu_usage,
 				"data_timeframe": flagdata_timeframe,
 				"disk_read": flagdisk_read,
 				"disk_write": flagdisk_write,
-				"email_address": flagemail_address,
+				"email_address": parsedemail_address,
 				"exceed_all": flagexceed_all,
 				"memory_usage": flagmemory_usage,
 				"name": flagname,
@@ -459,8 +467,12 @@ func registerCreateOrderCmd(client *Client) *cobra.Command {
 		Use:   "create-order",
 		Short: "Creates an order through checkout. Returns payment status; on failure also includes payment_error with code and message.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parsedproducts interface{}
+			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
+				return fmt.Errorf("invalid JSON for --products: %w", err)
+			}
 			body := map[string]interface{}{
-				"products": flagproducts,
+				"products": parsedproducts,
 				"promo": flagpromo,
 			}
 			return client.Do("POST", "/vps/create-order", body)
@@ -491,8 +503,12 @@ func registerCreatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "create-power-task",
 		Short: "Creates a new power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parseddays interface{}
+			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+				return fmt.Errorf("invalid JSON for --days: %w", err)
+			}
 			body := map[string]interface{}{
-				"days": flagdays,
+				"days": parseddays,
 				"description": flagdescription,
 				"end_date": flagend_date,
 				"end_time": flagend_time,
@@ -703,9 +719,13 @@ func registerEditBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "edit-backup-schedule",
 		Short: "Edits an existing backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parseddow interface{}
+			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
+				return fmt.Errorf("invalid JSON for --dow: %w", err)
+			}
 			body := map[string]interface{}{
 				"compress": flagcompress,
-				"dow": flagdow,
+				"dow": parseddow,
 				"mailto": flagmailto,
 				"mode": flagmode,
 				"schedule_id": flagschedule_id,
@@ -1338,12 +1358,16 @@ func registerUpdateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "update-notification",
 		Short: "Updates an existing notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parsedemail_address interface{}
+			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
+				return fmt.Errorf("invalid JSON for --email_address: %w", err)
+			}
 			body := map[string]interface{}{
 				"cpu_usage": flagcpu_usage,
 				"data_timeframe": flagdata_timeframe,
 				"disk_read": flagdisk_read,
 				"disk_write": flagdisk_write,
-				"email_address": flagemail_address,
+				"email_address": parsedemail_address,
 				"exceed_all": flagexceed_all,
 				"memory_usage": flagmemory_usage,
 				"name": flagname,
@@ -1394,8 +1418,12 @@ func registerUpdatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "update-power-task",
 		Short: "Updates an existing power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parseddays interface{}
+			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+				return fmt.Errorf("invalid JSON for --days: %w", err)
+			}
 			body := map[string]interface{}{
-				"days": flagdays,
+				"days": parseddays,
 				"description": flagdescription,
 				"end_date": flagend_date,
 				"end_time": flagend_time,
@@ -1488,8 +1516,12 @@ func registerValidatePricingCmd(client *Client) *cobra.Command {
 		Use:   "validate-pricing",
 		Short: "Validates pricing for one or more products, returning per-product breakdown and order summary",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			var parsedproducts interface{}
+			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
+				return fmt.Errorf("invalid JSON for --products: %w", err)
+			}
 			body := map[string]interface{}{
-				"products": flagproducts,
+				"products": parsedproducts,
 				"promo": flagpromo,
 			}
 			return client.Do("POST", "/vps/validate-pricing", body)
