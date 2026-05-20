@@ -293,7 +293,7 @@ func registerCreateBackupCmd(client *Client) *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVar(&flagcompress, "compress", "", "Backup compression type enum")
-	cmd.Flags().StringVar(&flagmode, "mode", "", "Backup mode (e.g., snapshot, suspend, stop)")
+	cmd.Flags().StringVar(&flagmode, "mode", "", "Backup mode enum - controls how the VM is handled during backup")
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
 	return cmd
@@ -325,10 +325,10 @@ func registerCreateBackupScheduleCmd(client *Client) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&flagcompress, "compress", "", "Backup compression type enum")
 	_ = cmd.MarkFlagRequired("compress")
-	cmd.Flags().StringVar(&flagdow, "dow", "", "Days of week when backup should run. Valid values: mon, tue, wed, thu, fri, sat, sun. Provide as an array of day names.")
+	cmd.Flags().StringVar(&flagdow, "dow", "", "Days of week when backup should run")
 	_ = cmd.MarkFlagRequired("dow")
 	cmd.Flags().BoolVar(&flagmailto, "mailto", false, "Email notification setting. Set to true to send notifications to client's email, false or omit to disable")
-	cmd.Flags().StringVar(&flagmode, "mode", "", "Backup mode. Valid values: 'snapshot', 'suspend', 'stop'")
+	cmd.Flags().StringVar(&flagmode, "mode", "", "Backup mode enum - controls how the VM is handled during backup")
 	_ = cmd.MarkFlagRequired("mode")
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
@@ -508,15 +508,15 @@ func registerCreatePowerTaskCmd(client *Client) *cobra.Command {
 			return client.Do("POST", "/vps/create-power-task", body)
 		},
 	}
-	cmd.Flags().StringVar(&flagdays, "days", "", "Days of the week for weekly jobs (array of mon, tue, wed, thu, fri, sat, sun)")
+	cmd.Flags().StringVar(&flagdays, "days", "", "Days of the week for weekly jobs")
 	cmd.Flags().StringVar(&flagdescription, "description", "", "Description of the power task")
 	cmd.Flags().StringVar(&flagend_date, "end_date", "", "End date in Y-m-d format (e.g., 2026-12-31)")
 	cmd.Flags().StringVar(&flagend_time, "end_time", "", "End time in HH:MM or HH:MM:SS format")
 	cmd.Flags().IntVar(&flagjob_hour, "job_hour", 0, "Job hour (alternative to job_time)")
 	cmd.Flags().IntVar(&flagjob_minutes, "job_minutes", 0, "Job minutes (alternative to job_time)")
 	cmd.Flags().StringVar(&flagjob_time, "job_time", "", "Job execution time in HH:MM or HH:MM:SS format")
-	cmd.Flags().StringVar(&flagjob_type, "job_type", "", "Job type: oneTime, daily, or weekly")
-	cmd.Flags().StringVar(&flagpower_task_action, "power_task_action", "", "Power action to perform (start, stop, restart)")
+	cmd.Flags().StringVar(&flagjob_type, "job_type", "", "Power task job type enum")
+	cmd.Flags().StringVar(&flagpower_task_action, "power_task_action", "", "Power task action enum")
 	_ = cmd.MarkFlagRequired("power_task_action")
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
@@ -717,10 +717,10 @@ func registerEditBackupScheduleCmd(client *Client) *cobra.Command {
 	}
 	cmd.Flags().StringVar(&flagcompress, "compress", "", "Backup compression type enum")
 	_ = cmd.MarkFlagRequired("compress")
-	cmd.Flags().StringVar(&flagdow, "dow", "", "Days of week when backup should run. Valid values: mon, tue, wed, thu, fri, sat, sun. Provide as an array of day names.")
+	cmd.Flags().StringVar(&flagdow, "dow", "", "Days of week when backup should run")
 	_ = cmd.MarkFlagRequired("dow")
 	cmd.Flags().BoolVar(&flagmailto, "mailto", false, "Email notification setting. Set to true to send notifications to client's email, false or omit to disable")
-	cmd.Flags().StringVar(&flagmode, "mode", "", "Backup mode. Valid values: 'snapshot', 'suspend', 'stop'")
+	cmd.Flags().StringVar(&flagmode, "mode", "", "Backup mode enum - controls how the VM is handled during backup")
 	_ = cmd.MarkFlagRequired("mode")
 	cmd.Flags().StringVar(&flagschedule_id, "schedule_id", "", "Backup schedule ID to edit")
 	_ = cmd.MarkFlagRequired("schedule_id")
@@ -1412,14 +1412,14 @@ func registerUpdatePowerTaskCmd(client *Client) *cobra.Command {
 			return client.Do("POST", "/vps/update-power-task", body)
 		},
 	}
-	cmd.Flags().StringVar(&flagdays, "days", "", "Days of the week for weekly jobs (array of mon, tue, wed, thu, fri, sat, sun)")
+	cmd.Flags().StringVar(&flagdays, "days", "", "Days of the week for weekly jobs")
 	cmd.Flags().StringVar(&flagdescription, "description", "", "Description of the power task")
 	cmd.Flags().StringVar(&flagend_date, "end_date", "", "End date in Y-m-d format (e.g., 2026-12-31)")
 	cmd.Flags().StringVar(&flagend_time, "end_time", "", "End time in HH:MM or HH:MM:SS format")
 	cmd.Flags().IntVar(&flagjob_hour, "job_hour", 0, "Job hour (alternative to job_time)")
 	cmd.Flags().IntVar(&flagjob_minutes, "job_minutes", 0, "Job minutes (alternative to job_time)")
 	cmd.Flags().StringVar(&flagjob_time, "job_time", "", "Job execution time in HH:MM or HH:MM:SS format")
-	cmd.Flags().StringVar(&flagjob_type, "job_type", "", "Job type: oneTime, daily, or weekly")
+	cmd.Flags().StringVar(&flagjob_type, "job_type", "", "Power task job type enum")
 	cmd.Flags().StringVar(&flagpower_task_action, "power_task_action", "", "Power action to perform (start, stop, restart)")
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
