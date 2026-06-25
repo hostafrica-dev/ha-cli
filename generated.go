@@ -47,6 +47,7 @@ func (c *Client) Do(method, path string, body map[string]interface{}) error {
 	if reqBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+	req.Header.Set("User-Agent", "ha-cli/"+version)
 	if c.Token != "" {
 		req.Header.Set("Authorization", "Bearer "+c.Token)
 	}
@@ -82,9 +83,7 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerCreateRdnsRecordCmd(client))
 	root.AddCommand(registerDeleteRdnsRecordCmd(client))
 	root.AddCommand(registerListRdnsRecordsCmd(client))
-	root.AddCommand(registerUserChangePasswordCmd(client))
 	root.AddCommand(registerCancelVpsCmd(client))
-	root.AddCommand(registerChangePasswordCmd(client))
 	root.AddCommand(registerCreateBackupCmd(client))
 	root.AddCommand(registerCreateBackupScheduleCmd(client))
 	root.AddCommand(registerCreateFirewallRuleCmd(client))
@@ -102,8 +101,6 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerGetCatalogueCmd(client))
 	root.AddCommand(registerGetVpsConfigCmd(client))
 	root.AddCommand(registerGetVpsDetailsCmd(client))
-	root.AddCommand(registerGetPrivateSshKeyCmd(client))
-	root.AddCommand(registerGetPublicSshKeyCmd(client))
 	root.AddCommand(registerListBackupSchedulesCmd(client))
 	root.AddCommand(registerListBackupsCmd(client))
 	root.AddCommand(registerListFirewallRulesCmd(client))
@@ -130,7 +127,6 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerUpdateNotificationCmd(client))
 	root.AddCommand(registerUpdatePowerTaskCmd(client))
 	root.AddCommand(registerUpdateSnapshotCmd(client))
-	root.AddCommand(registerUpdateSshKeysCmd(client))
 	root.AddCommand(registerValidatePricingCmd(client))
 }
 
@@ -202,33 +198,6 @@ func registerListRdnsRecordsCmd(client *Client) *cobra.Command {
 	return cmd
 }
 
-// registerUserChangePasswordCmd returns the cobra command for UserChangePassword
-// POST /user/change-password
-func registerUserChangePasswordCmd(client *Client) *cobra.Command {
-	var flagconfirm_password string
-	var flagold_password string
-	var flagpassword string
-	cmd := &cobra.Command{
-		Use:   "user-change-password",
-		Short: "Changes the authenticated user's password. All active sessions will be revoked and the user must login again.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"confirm_password": flagconfirm_password,
-				"old_password": flagold_password,
-				"password": flagpassword,
-			}
-			return client.Do("POST", "/user/change-password", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagconfirm_password, "confirm_password", "", "Confirm new password (must match password)")
-	_ = cmd.MarkFlagRequired("confirm_password")
-	cmd.Flags().StringVar(&flagold_password, "old_password", "", "Current password")
-	_ = cmd.MarkFlagRequired("old_password")
-	cmd.Flags().StringVar(&flagpassword, "password", "", "New password")
-	_ = cmd.MarkFlagRequired("password")
-	return cmd
-}
-
 // registerCancelVpsCmd returns the cobra command for CancelVps
 // POST /vps/cancel
 func registerCancelVpsCmd(client *Client) *cobra.Command {
@@ -248,29 +217,6 @@ func registerCancelVpsCmd(client *Client) *cobra.Command {
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
 	cmd.Flags().StringVar(&flagtype, "type", "", "Cancel type enum - controls when a VPS service cancellation takes effect")
-	return cmd
-}
-
-// registerChangePasswordCmd returns the cobra command for ChangePassword
-// POST /vps/change-password
-func registerChangePasswordCmd(client *Client) *cobra.Command {
-	var flagpassword string
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "change-password",
-		Short: "Change the root password for a VPS service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"password": flagpassword,
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/change-password", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagpassword, "password", "", "New root password for the VPS")
-	_ = cmd.MarkFlagRequired("password")
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
 	return cmd
 }
 
@@ -312,7 +258,7 @@ func registerCreateBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "create-backup-schedule",
 		Short: "Creates a new backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddow json.RawMessage
+			var parseddow interface{}
 			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
 				return fmt.Errorf("invalid JSON for --dow: %w", err)
 			}
@@ -420,7 +366,7 @@ func registerCreateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "create-notification",
 		Short: "Creates a new notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedemail_address json.RawMessage
+			var parsedemail_address interface{}
 			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
 				return fmt.Errorf("invalid JSON for --email_address: %w", err)
 			}
@@ -467,7 +413,7 @@ func registerCreateOrderCmd(client *Client) *cobra.Command {
 		Use:   "create-order",
 		Short: "Creates an order through checkout. Returns payment status; on failure also includes payment_error with code and message.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedproducts json.RawMessage
+			var parsedproducts interface{}
 			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
 				return fmt.Errorf("invalid JSON for --products: %w", err)
 			}
@@ -503,7 +449,7 @@ func registerCreatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "create-power-task",
 		Short: "Creates a new power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays json.RawMessage
+			var parseddays interface{}
 			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
 				return fmt.Errorf("invalid JSON for --days: %w", err)
 			}
@@ -719,7 +665,7 @@ func registerEditBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "edit-backup-schedule",
 		Short: "Edits an existing backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddow json.RawMessage
+			var parseddow interface{}
 			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
 				return fmt.Errorf("invalid JSON for --dow: %w", err)
 			}
@@ -803,44 +749,6 @@ func registerGetVpsDetailsCmd(client *Client) *cobra.Command {
 				"service_id": flagservice_id,
 			}
 			return client.Do("POST", "/vps/get-details", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
-	return cmd
-}
-
-// registerGetPrivateSshKeyCmd returns the cobra command for GetPrivateSshKey
-// POST /vps/get-private-ssh-keys
-func registerGetPrivateSshKeyCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "get-private-ssh-key",
-		Short: "Retrieves the private SSH key configured for a VPS service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/get-private-ssh-keys", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
-	return cmd
-}
-
-// registerGetPublicSshKeyCmd returns the cobra command for GetPublicSshKey
-// POST /vps/get-public-ssh-keys
-func registerGetPublicSshKeyCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	cmd := &cobra.Command{
-		Use:   "get-public-ssh-key",
-		Short: "Retrieves the public SSH key configured for a VPS service",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
-			return client.Do("POST", "/vps/get-public-ssh-keys", body)
 		},
 	}
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
@@ -1358,7 +1266,7 @@ func registerUpdateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "update-notification",
 		Short: "Updates an existing notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedemail_address json.RawMessage
+			var parsedemail_address interface{}
 			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
 				return fmt.Errorf("invalid JSON for --email_address: %w", err)
 			}
@@ -1418,7 +1326,7 @@ func registerUpdatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "update-power-task",
 		Short: "Updates an existing power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays json.RawMessage
+			var parseddays interface{}
 			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
 				return fmt.Errorf("invalid JSON for --days: %w", err)
 			}
@@ -1484,29 +1392,6 @@ func registerUpdateSnapshotCmd(client *Client) *cobra.Command {
 	return cmd
 }
 
-// registerUpdateSshKeysCmd returns the cobra command for UpdateSshKeys
-// POST /vps/update-ssh-keys
-func registerUpdateSshKeysCmd(client *Client) *cobra.Command {
-	var flagservice_id string
-	var flagsshKeys string
-	cmd := &cobra.Command{
-		Use:   "update-ssh-keys",
-		Short: "Updates SSH public keys for a VPS service for root access.",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-				"sshKeys": flagsshKeys,
-			}
-			return client.Do("POST", "/vps/update-ssh-keys", body)
-		},
-	}
-	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
-	_ = cmd.MarkFlagRequired("service_id")
-	cmd.Flags().StringVar(&flagsshKeys, "sshKeys", "", "SSH public key in OpenSSH format (must start with ssh-rsa, ssh-dss, ssh-ed25519, or ssh-ecdsa)")
-	_ = cmd.MarkFlagRequired("sshKeys")
-	return cmd
-}
-
 // registerValidatePricingCmd returns the cobra command for ValidatePricing
 // POST /vps/validate-pricing
 func registerValidatePricingCmd(client *Client) *cobra.Command {
@@ -1516,7 +1401,7 @@ func registerValidatePricingCmd(client *Client) *cobra.Command {
 		Use:   "validate-pricing",
 		Short: "Validates pricing for one or more products, returning per-product breakdown and order summary",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedproducts json.RawMessage
+			var parsedproducts interface{}
 			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
 				return fmt.Errorf("invalid JSON for --products: %w", err)
 			}
