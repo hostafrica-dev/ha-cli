@@ -258,7 +258,7 @@ func registerCreateBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "create-backup-schedule",
 		Short: "Creates a new backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddow interface{}
+			var parseddow json.RawMessage
 			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
 				return fmt.Errorf("invalid JSON for --dow: %w", err)
 			}
@@ -366,7 +366,7 @@ func registerCreateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "create-notification",
 		Short: "Creates a new notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedemail_address interface{}
+			var parsedemail_address json.RawMessage
 			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
 				return fmt.Errorf("invalid JSON for --email_address: %w", err)
 			}
@@ -413,7 +413,7 @@ func registerCreateOrderCmd(client *Client) *cobra.Command {
 		Use:   "create-order",
 		Short: "Creates an order through checkout. Returns payment status; on failure also includes payment_error with code and message.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedproducts interface{}
+			var parsedproducts json.RawMessage
 			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
 				return fmt.Errorf("invalid JSON for --products: %w", err)
 			}
@@ -449,7 +449,7 @@ func registerCreatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "create-power-task",
 		Short: "Creates a new power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays interface{}
+			var parseddays json.RawMessage
 			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
 				return fmt.Errorf("invalid JSON for --days: %w", err)
 			}
@@ -665,7 +665,7 @@ func registerEditBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "edit-backup-schedule",
 		Short: "Edits an existing backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddow interface{}
+			var parseddow json.RawMessage
 			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
 				return fmt.Errorf("invalid JSON for --dow: %w", err)
 			}
@@ -1266,7 +1266,7 @@ func registerUpdateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "update-notification",
 		Short: "Updates an existing notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedemail_address interface{}
+			var parsedemail_address json.RawMessage
 			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
 				return fmt.Errorf("invalid JSON for --email_address: %w", err)
 			}
@@ -1326,7 +1326,7 @@ func registerUpdatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "update-power-task",
 		Short: "Updates an existing power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays interface{}
+			var parseddays json.RawMessage
 			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
 				return fmt.Errorf("invalid JSON for --days: %w", err)
 			}
@@ -1401,7 +1401,7 @@ func registerValidatePricingCmd(client *Client) *cobra.Command {
 		Use:   "validate-pricing",
 		Short: "Validates pricing for one or more products, returning per-product breakdown and order summary",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedproducts interface{}
+			var parsedproducts json.RawMessage
 			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
 				return fmt.Errorf("invalid JSON for --products: %w", err)
 			}
