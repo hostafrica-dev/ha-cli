@@ -91,12 +91,14 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerCreateOrderCmd(client))
 	root.AddCommand(registerCreatePowerTaskCmd(client))
 	root.AddCommand(registerCreateSnapshotCmd(client))
+	root.AddCommand(registerCreateSnapshotJobCmd(client))
 	root.AddCommand(registerDeleteBackupCmd(client))
 	root.AddCommand(registerDeleteBackupScheduleCmd(client))
 	root.AddCommand(registerDeleteFirewallRuleCmd(client))
 	root.AddCommand(registerDeleteNotificationCmd(client))
 	root.AddCommand(registerDeletePowerTaskCmd(client))
 	root.AddCommand(registerDeleteSnapshotCmd(client))
+	root.AddCommand(registerDeleteSnapshotJobCmd(client))
 	root.AddCommand(registerEditBackupScheduleCmd(client))
 	root.AddCommand(registerGetCatalogueCmd(client))
 	root.AddCommand(registerGetVpsConfigCmd(client))
@@ -109,6 +111,7 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerListOrdersCmd(client))
 	root.AddCommand(registerListPowerTasksCmd(client))
 	root.AddCommand(registerListReinstallOsCmd(client))
+	root.AddCommand(registerListSnapshotJobsCmd(client))
 	root.AddCommand(registerListSnapshotsCmd(client))
 	root.AddCommand(registerListVpsServicesCmd(client))
 	root.AddCommand(registerMountIsoCmd(client))
@@ -127,6 +130,7 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerUpdateNotificationCmd(client))
 	root.AddCommand(registerUpdatePowerTaskCmd(client))
 	root.AddCommand(registerUpdateSnapshotCmd(client))
+	root.AddCommand(registerUpdateSnapshotJobCmd(client))
 	root.AddCommand(registerValidatePricingCmd(client))
 }
 
@@ -492,24 +496,74 @@ func registerCreatePowerTaskCmd(client *Client) *cobra.Command {
 // POST /vps/create-snapshot
 func registerCreateSnapshotCmd(client *Client) *cobra.Command {
 	var flagdescription string
+	var flaginclude_ram bool
+	var flagname string
 	var flagservice_id string
-	var flagsnapname string
 	cmd := &cobra.Command{
 		Use:   "create-snapshot",
 		Short: "Creates a new snapshot for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
 				"description": flagdescription,
+				"include_ram": flaginclude_ram,
+				"name": flagname,
 				"service_id": flagservice_id,
-				"snapname": flagsnapname,
 			}
 			return client.Do("POST", "/vps/create-snapshot", body)
 		},
 	}
 	cmd.Flags().StringVar(&flagdescription, "description", "", "Description for the snapshot")
+	cmd.Flags().BoolVar(&flaginclude_ram, "include_ram", false, "Whether to include RAM state in the snapshot. Defaults to false when omitted.")
+	cmd.Flags().StringVar(&flagname, "name", "", "Name for the snapshot")
+	_ = cmd.MarkFlagRequired("name")
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
-	cmd.Flags().StringVar(&flagsnapname, "snapname", "", "Name for the snapshot")
+	return cmd
+}
+
+// registerCreateSnapshotJobCmd returns the cobra command for CreateSnapshotJob
+// POST /vps/create-snapshot-job
+func registerCreateSnapshotJobCmd(client *Client) *cobra.Command {
+	var flagdays string
+	var flagdescription string
+	var flagname string
+	var flagperiod string
+	var flagrun_every int
+	var flagservice_id string
+	var flagstart_time string
+	var flagvmstate bool
+	cmd := &cobra.Command{
+		Use:   "create-snapshot-job",
+		Short: "[Under development] Creates a new snapshot job for a VPS service. Use period='hourly' with run_every, or period='daily' with days and start_time.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var parseddays json.RawMessage
+			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+				return fmt.Errorf("invalid JSON for --days: %w", err)
+			}
+			body := map[string]interface{}{
+				"days": parseddays,
+				"description": flagdescription,
+				"name": flagname,
+				"period": flagperiod,
+				"run_every": flagrun_every,
+				"service_id": flagservice_id,
+				"start_time": flagstart_time,
+				"vmstate": flagvmstate,
+			}
+			return client.Do("POST", "/vps/create-snapshot-job", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdays, "days", "", "For daily jobs: days of week when the job should run")
+	cmd.Flags().StringVar(&flagdescription, "description", "", "Description for the snapshot job")
+	cmd.Flags().StringVar(&flagname, "name", "", "Name for the snapshot job (e.g. 'auto_hourly')")
+	_ = cmd.MarkFlagRequired("name")
+	cmd.Flags().StringVar(&flagperiod, "period", "", "Schedule period for snapshot jobs")
+	_ = cmd.MarkFlagRequired("period")
+	cmd.Flags().IntVar(&flagrun_every, "run_every", 0, "For hourly jobs: run every N hours (e.g. 6 = every 6 hours)")
+	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
+	_ = cmd.MarkFlagRequired("service_id")
+	cmd.Flags().StringVar(&flagstart_time, "start_time", "", "For daily jobs: start time in HH:MM format (e.g. '02:30')")
+	cmd.Flags().BoolVar(&flagvmstate, "vmstate", false, "Whether to include VM state in the snapshot")
 	return cmd
 }
 
@@ -648,6 +702,29 @@ func registerDeleteSnapshotCmd(client *Client) *cobra.Command {
 	_ = cmd.MarkFlagRequired("service_id")
 	cmd.Flags().StringVar(&flagsnapshot_name, "snapshot_name", "", "Snapshot name to delete")
 	_ = cmd.MarkFlagRequired("snapshot_name")
+	return cmd
+}
+
+// registerDeleteSnapshotJobCmd returns the cobra command for DeleteSnapshotJob
+// POST /vps/delete-snapshot-job
+func registerDeleteSnapshotJobCmd(client *Client) *cobra.Command {
+	var flagjob_id string
+	var flagservice_id string
+	cmd := &cobra.Command{
+		Use:   "delete-snapshot-job",
+		Short: "[Under development]Deletes a snapshot job from a VPS service",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"job_id": flagjob_id,
+				"service_id": flagservice_id,
+			}
+			return client.Do("POST", "/vps/delete-snapshot-job", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagjob_id, "job_id", "", "Snapshot job ID to delete")
+	_ = cmd.MarkFlagRequired("job_id")
+	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
+	_ = cmd.MarkFlagRequired("service_id")
 	return cmd
 }
 
@@ -891,12 +968,31 @@ func registerListReinstallOsCmd(client *Client) *cobra.Command {
 	var flagservice_id string
 	cmd := &cobra.Command{
 		Use:   "list-reinstall-os",
-		Short: "[Under development] Retrieves the list of available OS images for VPS reinstallation",
+		Short: "Retrieves the list of available OS images for VPS reinstallation",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
 				"service_id": flagservice_id,
 			}
 			return client.Do("POST", "/vps/list-reinstall-images", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
+	_ = cmd.MarkFlagRequired("service_id")
+	return cmd
+}
+
+// registerListSnapshotJobsCmd returns the cobra command for ListSnapshotJobs
+// POST /vps/list-snapshot-jobs
+func registerListSnapshotJobsCmd(client *Client) *cobra.Command {
+	var flagservice_id string
+	cmd := &cobra.Command{
+		Use:   "list-snapshot-jobs",
+		Short: "[Under development]Retrieves the list of snapshot jobs for a VPS service",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"service_id": flagservice_id,
+			}
+			return client.Do("POST", "/vps/list-snapshot-jobs", body)
 		},
 	}
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
@@ -1084,7 +1180,7 @@ func registerRollbackSnapshotCmd(client *Client) *cobra.Command {
 	var flagsnapshot_name string
 	cmd := &cobra.Command{
 		Use:   "rollback-snapshot",
-		Short: "[Under development] Rolls back a VPS to a previous snapshot state",
+		Short: "Rolls back a VPS to a previous snapshot state",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
 				"service_id": flagservice_id,
@@ -1389,6 +1485,54 @@ func registerUpdateSnapshotCmd(client *Client) *cobra.Command {
 	_ = cmd.MarkFlagRequired("service_id")
 	cmd.Flags().StringVar(&flagsnapshot_name, "snapshot_name", "", "Snapshot name to update")
 	_ = cmd.MarkFlagRequired("snapshot_name")
+	return cmd
+}
+
+// registerUpdateSnapshotJobCmd returns the cobra command for UpdateSnapshotJob
+// POST /vps/update-snapshot-job
+func registerUpdateSnapshotJobCmd(client *Client) *cobra.Command {
+	var flagdays string
+	var flagdescription string
+	var flagjob_id string
+	var flagname string
+	var flagperiod string
+	var flagrun_every int
+	var flagservice_id string
+	var flagstart_time string
+	var flagvmstate bool
+	cmd := &cobra.Command{
+		Use:   "update-snapshot-job",
+		Short: "[Under development] Updates an existing snapshot job. Only provide fields you want to change.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var parseddays json.RawMessage
+			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+				return fmt.Errorf("invalid JSON for --days: %w", err)
+			}
+			body := map[string]interface{}{
+				"days": parseddays,
+				"description": flagdescription,
+				"job_id": flagjob_id,
+				"name": flagname,
+				"period": flagperiod,
+				"run_every": flagrun_every,
+				"service_id": flagservice_id,
+				"start_time": flagstart_time,
+				"vmstate": flagvmstate,
+			}
+			return client.Do("POST", "/vps/update-snapshot-job", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdays, "days", "", "For daily jobs: days of week when the job should run")
+	cmd.Flags().StringVar(&flagdescription, "description", "", "New description for the snapshot job")
+	cmd.Flags().StringVar(&flagjob_id, "job_id", "", "Snapshot job ID to update")
+	_ = cmd.MarkFlagRequired("job_id")
+	cmd.Flags().StringVar(&flagname, "name", "", "New name for the snapshot job")
+	cmd.Flags().StringVar(&flagperiod, "period", "", "Schedule period for snapshot jobs")
+	cmd.Flags().IntVar(&flagrun_every, "run_every", 0, "For hourly jobs: run every N hours (e.g. 6 = every 6 hours)")
+	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
+	_ = cmd.MarkFlagRequired("service_id")
+	cmd.Flags().StringVar(&flagstart_time, "start_time", "", "For daily jobs: start time in HH:MM format (e.g. '02:30')")
+	cmd.Flags().BoolVar(&flagvmstate, "vmstate", false, "Whether to include VM state in the snapshot")
 	return cmd
 }
 
