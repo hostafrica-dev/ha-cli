@@ -83,6 +83,14 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerCreateRdnsRecordCmd(client))
 	root.AddCommand(registerDeleteRdnsRecordCmd(client))
 	root.AddCommand(registerListRdnsRecordsCmd(client))
+	root.AddCommand(registerCheckDomainAvailabilityCmd(client))
+	root.AddCommand(registerGetDomainCmd(client))
+	root.AddCommand(registerGetDomainContactsCmd(client))
+	root.AddCommand(registerListDomainsCmd(client))
+	root.AddCommand(registerListDomainsRequiringDataCmd(client))
+	root.AddCommand(registerSaveDomainRequiredDataCmd(client))
+	root.AddCommand(registerSuggestDomainsCmd(client))
+	root.AddCommand(registerUpdateDomainSettingsCmd(client))
 	root.AddCommand(registerCancelVpsCmd(client))
 	root.AddCommand(registerCreateBackupCmd(client))
 	root.AddCommand(registerCreateBackupScheduleCmd(client))
@@ -160,7 +168,7 @@ func registerCreateRdnsRecordCmd(client *Client) *cobra.Command {
 	_ = cmd.MarkFlagRequired("hostname")
 	cmd.Flags().StringVar(&flagip, "ip", "", "IPv4 or IPv6 address the PTR record should point from")
 	_ = cmd.MarkFlagRequired("ip")
-	cmd.Flags().IntVar(&flagrelid, "relid", 0, "Related service id matching the zone type (tblhosting.id, tblhostingaddons.id or tbldomains.id)")
+	cmd.Flags().IntVar(&flagrelid, "relid", 0, "Related service id matching the zone type (hosting, addon, or domain)")
 	_ = cmd.MarkFlagRequired("relid")
 	cmd.Flags().IntVar(&flagttl, "ttl", 0, "Time-to-live in seconds. Defaults to 14400; clamped to [30, 86400]")
 	cmd.Flags().IntVar(&flagtype, "type", 0, "Zone type: 0=OTHER, 1=DOMAIN, 2=HOSTING, 3=ADDON")
@@ -202,6 +210,177 @@ func registerListRdnsRecordsCmd(client *Client) *cobra.Command {
 	return cmd
 }
 
+// registerCheckDomainAvailabilityCmd returns the cobra command for CheckDomainAvailability
+// POST /domain/check-availability
+func registerCheckDomainAvailabilityCmd(client *Client) *cobra.Command {
+	var flagcurrency string
+	var flagdomain string
+	var flagdomains string
+	cmd := &cobra.Command{
+		Use:   "check-domain-availability",
+		Short: "Checks domain name availability for a single domain or a comma-separated batch. Exactly one of domain or domains must be provided. Returns pricing, suggestions, and register_url scoped to the requested currency.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"currency": flagcurrency,
+				"domain": flagdomain,
+				"domains": flagdomains,
+			}
+			return client.Do("POST", "/domain/check-availability", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagcurrency, "currency", "", "Currency for pricing. Accepts ISO code, symbol, country name, or numeric ID. Defaults to ZAR.")
+	cmd.Flags().StringVar(&flagdomain, "domain", "", "A single domain name to look up, e.g. \"example.co.za\". Required unless domains is provided.")
+	cmd.Flags().StringVar(&flagdomains, "domains", "", "Comma-separated list of domain names for a batch check. Required unless domain is provided.")
+	return cmd
+}
+
+// registerGetDomainCmd returns the cobra command for GetDomain
+// POST /domain/get-domain
+func registerGetDomainCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	cmd := &cobra.Command{
+		Use:   "get-domain",
+		Short: "Gets details for an owned domain.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"domain_id": flagdomain_id,
+			}
+			return client.Do("POST", "/domain/get-domain", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	return cmd
+}
+
+// registerGetDomainContactsCmd returns the cobra command for GetDomainContacts
+// POST /domain/get-domain-contacts
+func registerGetDomainContactsCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	cmd := &cobra.Command{
+		Use:   "get-domain-contacts",
+		Short: "Retrieves WHOIS contact information for an owned domain. Contact field names vary by TLD and registrar; use the returned structure when building custom contact update payloads.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"domain_id": flagdomain_id,
+			}
+			return client.Do("POST", "/domain/get-domain-contacts", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	return cmd
+}
+
+// registerListDomainsCmd returns the cobra command for ListDomains
+// POST /domain/list-domains
+func registerListDomainsCmd(client *Client) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-domains",
+		Short: "List all domains belonging to the authenticated client.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+			}
+			return client.Do("POST", "/domain/list-domains", body)
+		},
+	}
+	return cmd
+}
+
+// registerListDomainsRequiringDataCmd returns the cobra command for ListDomainsRequiringData
+// POST /domain/list-domains-requiring-data
+func registerListDomainsRequiringDataCmd(client *Client) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-domains-requiring-data",
+		Short: "Lists domains belonging to the authenticated client that require additional registrar or contact data.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+			}
+			return client.Do("POST", "/domain/list-domains-requiring-data", body)
+		},
+	}
+	return cmd
+}
+
+// registerSaveDomainRequiredDataCmd returns the cobra command for SaveDomainRequiredData
+// POST /domain/save-domain-required-data
+func registerSaveDomainRequiredDataCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flagfields string
+	cmd := &cobra.Command{
+		Use:   "save-domain-required-data",
+		Short: "Saves additional registrar field values for a pending domain. Keys must match additionalFields[].name from list-domains-requiring-data.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			var parsedfields json.RawMessage
+			if err := json.Unmarshal([]byte(flagfields), &parsedfields); err != nil {
+				return fmt.Errorf("invalid JSON for --fields: %w", err)
+			}
+			body := map[string]interface{}{
+				"domain_id": flagdomain_id,
+				"fields": parsedfields,
+			}
+			return client.Do("POST", "/domain/save-domain-required-data", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().StringVar(&flagfields, "fields", "", "Registrar field values keyed by additionalFields[].name")
+	_ = cmd.MarkFlagRequired("fields")
+	return cmd
+}
+
+// registerSuggestDomainsCmd returns the cobra command for SuggestDomains
+// POST /domain/suggest
+func registerSuggestDomainsCmd(client *Client) *cobra.Command {
+	var flagcurrency string
+	var flagprompt string
+	cmd := &cobra.Command{
+		Use:   "suggest-domains",
+		Short: "Generates AI-powered domain name suggestions from a natural-language description. Returns suggested domains with availability status and pricing.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"currency": flagcurrency,
+				"prompt": flagprompt,
+			}
+			return client.Do("POST", "/domain/suggest", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagcurrency, "currency", "", "Currency for pricing. Accepts ISO code, symbol, country name, or numeric ID. Defaults to ZAR.")
+	cmd.Flags().StringVar(&flagprompt, "prompt", "", "Natural-language description of the business or idea, e.g. \"my coffee shop\"")
+	_ = cmd.MarkFlagRequired("prompt")
+	return cmd
+}
+
+// registerUpdateDomainSettingsCmd returns the cobra command for UpdateDomainSettings
+// POST /domain/update-domain-settings
+func registerUpdateDomainSettingsCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flaggateway string
+	var flagsetting string
+	var flagvalue bool
+	cmd := &cobra.Command{
+		Use:   "update-domain-settings",
+		Short: "Updates a single domain setting (auto-renew, ID protection, or paid addons). One setting per request.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"domain_id": flagdomain_id,
+				"gateway": flaggateway,
+				"setting": flagsetting,
+				"value": flagvalue,
+			}
+			return client.Do("POST", "/domain/update-domain-settings", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().StringVar(&flaggateway, "gateway", "", "Payment gateway slug when enabling a paid addon (e.g. stripe)")
+	cmd.Flags().StringVar(&flagsetting, "setting", "", "Allowed domain setting keys for update-domain-settings")
+	_ = cmd.MarkFlagRequired("setting")
+	cmd.Flags().BoolVar(&flagvalue, "value", false, "New boolean value")
+	_ = cmd.MarkFlagRequired("value")
+	return cmd
+}
+
 // registerCancelVpsCmd returns the cobra command for CancelVps
 // POST /vps/cancel
 func registerCancelVpsCmd(client *Client) *cobra.Command {
@@ -209,7 +388,7 @@ func registerCancelVpsCmd(client *Client) *cobra.Command {
 	var flagtype string
 	cmd := &cobra.Command{
 		Use:   "cancel-vps",
-		Short: "Cancels a VPS service through WHMCS. This action is irreversible",
+		Short: "Cancels a VPS service. This action is irreversible",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
 				"service_id": flagservice_id,
@@ -570,7 +749,7 @@ func registerCreateSnapshotJobCmd(client *Client) *cobra.Command {
 // registerDeleteBackupCmd returns the cobra command for DeleteBackup
 // POST /vps/delete-backup
 func registerDeleteBackupCmd(client *Client) *cobra.Command {
-	var flagbackup_id int
+	var flagbackup_id string
 	var flagservice_id string
 	cmd := &cobra.Command{
 		Use:   "delete-backup",
@@ -583,7 +762,7 @@ func registerDeleteBackupCmd(client *Client) *cobra.Command {
 			return client.Do("POST", "/vps/delete-backup", body)
 		},
 	}
-	cmd.Flags().IntVar(&flagbackup_id, "backup_id", 0, "Backup ID to delete")
+	cmd.Flags().StringVar(&flagbackup_id, "backup_id", "", "Backup ID to delete")
 	_ = cmd.MarkFlagRequired("backup_id")
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
