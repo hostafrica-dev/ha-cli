@@ -120,6 +120,7 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerGetCatalogueCmd(client))
 	root.AddCommand(registerGetVpsConfigCmd(client))
 	root.AddCommand(registerGetVpsDetailsCmd(client))
+	root.AddCommand(registerGetEncryptedPasswordCmd(client))
 	root.AddCommand(registerListBackupSchedulesCmd(client))
 	root.AddCommand(registerListBackupsCmd(client))
 	root.AddCommand(registerListFirewallRulesCmd(client))
@@ -1229,7 +1230,7 @@ func registerGetVpsDetailsCmd(client *Client) *cobra.Command {
 	var flagservice_id string
 	cmd := &cobra.Command{
 		Use:   "get-vps-details",
-		Short: "Gets detailed information about a VPS service including configuration, network settings, and statistics",
+		Short: "Gets detailed information about a VPS service including configuration, network settings, and statistics. Credentials.password is always \"<redacted>\"; plaintext passwords are never returned. To retrieve the password securely, use GetEncryptedPassword (/vps/get-encrypted-password).",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
 				"service_id": flagservice_id,
@@ -1237,6 +1238,29 @@ func registerGetVpsDetailsCmd(client *Client) *cobra.Command {
 			return client.Do("POST", "/vps/get-details", body)
 		},
 	}
+	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
+	_ = cmd.MarkFlagRequired("service_id")
+	return cmd
+}
+
+// registerGetEncryptedPasswordCmd returns the cobra command for GetEncryptedPassword
+// POST /vps/get-encrypted-password
+func registerGetEncryptedPasswordCmd(client *Client) *cobra.Command {
+	var flagpublic_key string
+	var flagservice_id string
+	cmd := &cobra.Command{
+		Use:   "get-encrypted-password",
+		Short: "Retrieves the VPS username and root password without exposing plaintext over the API. Send a PEM-encoded RSA 4096-bit public key; the API encrypts the password with RSA-OAEP (SHA-256), and returns base64 ciphertext plus encryption metadata. Never send the private key. Invalid or non-4096-bit keys return HTTP 422 ValidationError. Generate a key with: openssl genrsa -out private.pem 4096 && openssl rsa -in private.pem -pubout -out public.pem. Decrypt with: echo CIPHERTEXT | base64 -d | openssl pkeyutl -decrypt -inkey private.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 (macOS: base64 -D).",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"public_key": flagpublic_key,
+				"service_id": flagservice_id,
+			}
+			return client.Do("POST", "/vps/get-encrypted-password", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagpublic_key, "public_key", "", "PEM-encoded RSA public key only (never the private key). Accepts SPKI (`-----BEGIN PUBLIC KEY-----`) or PKCS#1 (`-----BEGIN RSA PUBLIC KEY-----`). Must be exactly 4096-bit. Used with RSA-OAEP and SHA-256 to encrypt the password.")
+	_ = cmd.MarkFlagRequired("public_key")
 	cmd.Flags().StringVar(&flagservice_id, "service_id", "", "Service ID - must be sent as a string")
 	_ = cmd.MarkFlagRequired("service_id")
 	return cmd
