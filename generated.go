@@ -80,6 +80,8 @@ func (c *Client) Do(method, path string, body map[string]interface{}) error {
 
 // RegisterGeneratedCommands registers all auto-generated CLI commands from the OpenAPI spec.
 func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
+	root.AddCommand(registerGetInvoiceDetailsCmd(client))
+	root.AddCommand(registerListInvoicesCmd(client))
 	root.AddCommand(registerAddDnsRecordCmd(client))
 	root.AddCommand(registerCreateRdnsRecordCmd(client))
 	root.AddCommand(registerDeleteRdnsRecordCmd(client))
@@ -152,33 +154,75 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerValidatePricingCmd(client))
 }
 
+// registerGetInvoiceDetailsCmd returns the cobra command for GetInvoiceDetails
+// POST /billing/get-invoice-details
+func registerGetInvoiceDetailsCmd(client *Client) *cobra.Command {
+	var flaginvoice_id string
+	cmd := &cobra.Command{
+		Use:   "get-invoice-details",
+		Short: "Gets details for a single invoice, including line items, payee information, and transactions",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+				"invoice_id": flaginvoice_id,
+			}
+			return client.Do("POST", "/billing/get-invoice-details", body)
+		},
+	}
+	cmd.Flags().StringVar(&flaginvoice_id, "invoice_id", "", "Invoice ID - must be sent as a string")
+	_ = cmd.MarkFlagRequired("invoice_id")
+	return cmd
+}
+
+// registerListInvoicesCmd returns the cobra command for ListInvoices
+// POST /billing/list-invoices
+func registerListInvoicesCmd(client *Client) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-invoices",
+		Short: "Lists invoices for the authenticated user",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{
+			}
+			return client.Do("POST", "/billing/list-invoices", body)
+		},
+	}
+	return cmd
+}
+
 // registerAddDnsRecordCmd returns the cobra command for AddDnsRecord
 // POST /dns/add-record
 func registerAddDnsRecordCmd(client *Client) *cobra.Command {
+	var flagbackend string
+	var flagdomain_id string
 	var flagdomain_name string
 	var flagrecord string
+	var flagservice_id int
 	var flagzone_id string
 	cmd := &cobra.Command{
 		Use:   "add-dns-record",
-		Short: "Adds a DNS record to a zone via DNSManager.",
+		Short: "Adds a DNS record to a zone. Legacy callers pass zone_id only (DNS Manager v1). For DirectAdmin, pass backend=directadmin with domain_id; upstream v2 receives domain_id and record only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var parsedrecord json.RawMessage
 			if err := json.Unmarshal([]byte(flagrecord), &parsedrecord); err != nil {
 				return fmt.Errorf("invalid JSON for --record: %w", err)
 			}
 			body := map[string]interface{}{
+				"backend": flagbackend,
+				"domain_id": flagdomain_id,
 				"domain_name": flagdomain_name,
 				"record": parsedrecord,
+				"service_id": flagservice_id,
 				"zone_id": flagzone_id,
 			}
 			return client.Do("POST", "/dns/add-record", body)
 		},
 	}
-	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional when zone_id is provided")
-	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`.")
+	cmd.Flags().StringVar(&flagbackend, "backend", "", "Upstream DNS management backend for a zone.\n\n- `dns_manager` — WHMCS DNS Manager\n- `directadmin` — DirectAdmin DNS")
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "WHMCS domain id from list-dns-zones; required when backend is directadmin")
+	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional for dns_manager when zone_id is provided. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`. For edit and delete, `id` must be the\nnumeric zone line from get-dns-zone-details (a positive integer string).")
 	_ = cmd.MarkFlagRequired("record")
-	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details")
-	_ = cmd.MarkFlagRequired("zone_id")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "Optional WHMCS hosting service id from list-dns-zones hosting_id. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details; required for dns_manager / legacy callers")
 	return cmd
 }
 
@@ -238,77 +282,96 @@ func registerDeleteRdnsRecordCmd(client *Client) *cobra.Command {
 // registerDeleteDnsRecordCmd returns the cobra command for DeleteDnsRecord
 // POST /dns/delete-record
 func registerDeleteDnsRecordCmd(client *Client) *cobra.Command {
+	var flagbackend string
+	var flagdomain_id string
 	var flagdomain_name string
 	var flagrecord string
+	var flagservice_id int
 	var flagzone_id string
 	cmd := &cobra.Command{
 		Use:   "delete-dns-record",
-		Short: "Deletes a DNS record from a zone via DNSManager.",
+		Short: "Deletes a DNS record from a zone. Legacy callers pass zone_id only (DNS Manager v1). For DirectAdmin, pass backend=directadmin with domain_id; upstream v2 receives domain_id and record only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var parsedrecord json.RawMessage
 			if err := json.Unmarshal([]byte(flagrecord), &parsedrecord); err != nil {
 				return fmt.Errorf("invalid JSON for --record: %w", err)
 			}
 			body := map[string]interface{}{
+				"backend": flagbackend,
+				"domain_id": flagdomain_id,
 				"domain_name": flagdomain_name,
 				"record": parsedrecord,
+				"service_id": flagservice_id,
 				"zone_id": flagzone_id,
 			}
 			return client.Do("POST", "/dns/delete-record", body)
 		},
 	}
-	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional when zone_id is provided")
-	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`.")
+	cmd.Flags().StringVar(&flagbackend, "backend", "", "Upstream DNS management backend for a zone.\n\n- `dns_manager` — WHMCS DNS Manager\n- `directadmin` — DirectAdmin DNS")
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "WHMCS domain id from list-dns-zones; required when backend is directadmin")
+	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional for dns_manager when zone_id is provided. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`. For edit and delete, `id` must be the\nnumeric zone line from get-dns-zone-details (a positive integer string).")
 	_ = cmd.MarkFlagRequired("record")
-	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details")
-	_ = cmd.MarkFlagRequired("zone_id")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "Optional WHMCS hosting service id from list-dns-zones hosting_id. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details; required for dns_manager / legacy callers")
 	return cmd
 }
 
 // registerEditDnsRecordCmd returns the cobra command for EditDnsRecord
 // POST /dns/edit-record
 func registerEditDnsRecordCmd(client *Client) *cobra.Command {
+	var flagbackend string
+	var flagdomain_id string
 	var flagdomain_name string
 	var flagrecord string
+	var flagservice_id int
 	var flagzone_id string
 	cmd := &cobra.Command{
 		Use:   "edit-dns-record",
-		Short: "Edits a DNS record in a zone via DNSManager.",
+		Short: "Edits a DNS record in a zone. Legacy callers pass zone_id only (DNS Manager v1). For DirectAdmin, pass backend=directadmin with domain_id; upstream v2 receives domain_id and record only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var parsedrecord json.RawMessage
 			if err := json.Unmarshal([]byte(flagrecord), &parsedrecord); err != nil {
 				return fmt.Errorf("invalid JSON for --record: %w", err)
 			}
 			body := map[string]interface{}{
+				"backend": flagbackend,
+				"domain_id": flagdomain_id,
 				"domain_name": flagdomain_name,
 				"record": parsedrecord,
+				"service_id": flagservice_id,
 				"zone_id": flagzone_id,
 			}
 			return client.Do("POST", "/dns/edit-record", body)
 		},
 	}
-	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional when zone_id is provided")
-	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`.")
+	cmd.Flags().StringVar(&flagbackend, "backend", "", "Upstream DNS management backend for a zone.\n\n- `dns_manager` — WHMCS DNS Manager\n- `directadmin` — DirectAdmin DNS")
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "WHMCS domain id from list-dns-zones; required when backend is directadmin")
+	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional for dns_manager when zone_id is provided. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`. For edit and delete, `id` must be the\nnumeric zone line from get-dns-zone-details (a positive integer string).")
 	_ = cmd.MarkFlagRequired("record")
-	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details")
-	_ = cmd.MarkFlagRequired("zone_id")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "Optional WHMCS hosting service id from list-dns-zones hosting_id. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details; required for dns_manager / legacy callers")
 	return cmd
 }
 
 // registerGetDnsZoneDetailsCmd returns the cobra command for GetDnsZoneDetails
 // POST /dns/get-zone
 func registerGetDnsZoneDetailsCmd(client *Client) *cobra.Command {
+	var flagbackend string
 	var flagdomain_id string
 	cmd := &cobra.Command{
 		Use:   "get-dns-zone-details",
-		Short: "Retrieves DNS zone details and records for an owned domain.",
+		Short: "Retrieves DNS zone details and records for an owned domain. Omit backend for the legacy DNS Manager (v1) path; set backend from list-dns-zones to route DirectAdmin zones to v2.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{
+				"backend": flagbackend,
 				"domain_id": flagdomain_id,
 			}
 			return client.Do("POST", "/dns/get-zone", body)
 		},
 	}
+	cmd.Flags().StringVar(&flagbackend, "backend", "", "Upstream DNS management backend for a zone.\n\n- `dns_manager` — WHMCS DNS Manager\n- `directadmin` — DirectAdmin DNS")
 	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
 	_ = cmd.MarkFlagRequired("domain_id")
 	return cmd
