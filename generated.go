@@ -84,23 +84,36 @@ func RegisterGeneratedCommands(root *cobra.Command, client *Client) {
 	root.AddCommand(registerListInvoicesCmd(client))
 	root.AddCommand(registerAddDnsRecordCmd(client))
 	root.AddCommand(registerCreateRdnsRecordCmd(client))
+	root.AddCommand(registerCreateDnsZoneCmd(client))
 	root.AddCommand(registerDeleteRdnsRecordCmd(client))
 	root.AddCommand(registerDeleteDnsRecordCmd(client))
+	root.AddCommand(registerDeleteDnsZoneCmd(client))
+	root.AddCommand(registerEditRdnsRecordCmd(client))
 	root.AddCommand(registerEditDnsRecordCmd(client))
 	root.AddCommand(registerGetDnsZoneDetailsCmd(client))
 	root.AddCommand(registerListDnsCreateCandidatesCmd(client))
 	root.AddCommand(registerListRdnsRecordsCmd(client))
 	root.AddCommand(registerListDnsZonesCmd(client))
+	root.AddCommand(registerAddDnssecRecordCmd(client))
+	root.AddCommand(registerAddDomainRedirectCmd(client))
 	root.AddCommand(registerCheckDomainAvailabilityCmd(client))
+	root.AddCommand(registerDeleteDnssecRecordCmd(client))
+	root.AddCommand(registerDeletePrivateNameserverCmd(client))
+	root.AddCommand(registerDeleteDomainRedirectCmd(client))
 	root.AddCommand(registerGetDomainCmd(client))
 	root.AddCommand(registerGetDomainContactsCmd(client))
+	root.AddCommand(registerGetDomainRedirectDetailsCmd(client))
 	root.AddCommand(registerListDnssecRecordsCmd(client))
 	root.AddCommand(registerListDomainsCmd(client))
 	root.AddCommand(registerListDomainsRequiringDataCmd(client))
+	root.AddCommand(registerListDomainRedirectsCmd(client))
+	root.AddCommand(registerModifyPrivateNameserverCmd(client))
+	root.AddCommand(registerRegisterPrivateNameserverCmd(client))
 	root.AddCommand(registerSaveDomainRequiredDataCmd(client))
 	root.AddCommand(registerSuggestDomainsCmd(client))
 	root.AddCommand(registerUpdateDomainContactsCmd(client))
 	root.AddCommand(registerUpdateDomainSettingsCmd(client))
+	root.AddCommand(registerUpdateDomainLockStatusCmd(client))
 	root.AddCommand(registerUpdateDomainNameserversCmd(client))
 	root.AddCommand(registerCancelVpsCmd(client))
 	root.AddCommand(registerCreateBackupCmd(client))
@@ -162,9 +175,8 @@ func registerGetInvoiceDetailsCmd(client *Client) *cobra.Command {
 		Use:   "get-invoice-details",
 		Short: "Gets details for a single invoice, including line items, payee information, and transactions",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"invoice_id": flaginvoice_id,
-			}
+			body := map[string]interface{}{}
+			body["invoice_id"] = flaginvoice_id
 			return client.Do("POST", "/billing/get-invoice-details", body)
 		},
 	}
@@ -180,8 +192,7 @@ func registerListInvoicesCmd(client *Client) *cobra.Command {
 		Use:   "list-invoices",
 		Short: "Lists invoices for the authenticated user",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/billing/list-invoices", body)
 		},
 	}
@@ -201,17 +212,26 @@ func registerAddDnsRecordCmd(client *Client) *cobra.Command {
 		Use:   "add-dns-record",
 		Short: "Adds a DNS record to a zone. Legacy callers pass zone_id only (DNS Manager v1). For DirectAdmin, pass backend=directadmin with domain_id; upstream v2 receives domain_id and record only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("backend") {
+				body["backend"] = flagbackend
+			}
+			if cmd.Flags().Changed("domain_id") {
+				body["domain_id"] = flagdomain_id
+			}
+			if cmd.Flags().Changed("domain_name") {
+				body["domain_name"] = flagdomain_name
+			}
 			var parsedrecord json.RawMessage
 			if err := json.Unmarshal([]byte(flagrecord), &parsedrecord); err != nil {
 				return fmt.Errorf("invalid JSON for --record: %w", err)
 			}
-			body := map[string]interface{}{
-				"backend": flagbackend,
-				"domain_id": flagdomain_id,
-				"domain_name": flagdomain_name,
-				"record": parsedrecord,
-				"service_id": flagservice_id,
-				"zone_id": flagzone_id,
+			body["record"] = parsedrecord
+			if cmd.Flags().Changed("service_id") {
+				body["service_id"] = flagservice_id
+			}
+			if cmd.Flags().Changed("zone_id") {
+				body["zone_id"] = flagzone_id
 			}
 			return client.Do("POST", "/dns/add-record", body)
 		},
@@ -221,7 +241,7 @@ func registerAddDnsRecordCmd(client *Client) *cobra.Command {
 	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional for dns_manager when zone_id is provided. Not forwarded on DirectAdmin mutations.")
 	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`. For edit and delete, `id` must be the\nnumeric zone line from get-dns-zone-details (a positive integer string).")
 	_ = cmd.MarkFlagRequired("record")
-	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "Optional WHMCS hosting service id from list-dns-zones hosting_id. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "WHMCS hosting service id — pass list-dns-zones hosting_id. Use when domain_id is null (hosting-only). Not forwarded on DirectAdmin record mutations.")
 	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details; required for dns_manager / legacy callers")
 	return cmd
 }
@@ -238,13 +258,14 @@ func registerCreateRdnsRecordCmd(client *Client) *cobra.Command {
 		Use:   "create-rdns-record",
 		Short: "Creates (or upserts) a PTR record for the authenticated client. If the client already owns a PTR for the same (serverid, ip) it is updated in place; if another client owns it a 409 is returned.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"hostname": flaghostname,
-				"ip": flagip,
-				"relid": flagrelid,
-				"ttl": flagttl,
-				"type": flagtype,
+			body := map[string]interface{}{}
+			body["hostname"] = flaghostname
+			body["ip"] = flagip
+			body["relid"] = flagrelid
+			if cmd.Flags().Changed("ttl") {
+				body["ttl"] = flagttl
 			}
+			body["type"] = flagtype
 			return client.Do("POST", "/dns/create-rdns-record", body)
 		},
 	}
@@ -260,6 +281,53 @@ func registerCreateRdnsRecordCmd(client *Client) *cobra.Command {
 	return cmd
 }
 
+// registerCreateDnsZoneCmd returns the cobra command for CreateDnsZone
+// POST /dns/create-zone
+func registerCreateDnsZoneCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flagdomain_name string
+	var flagrelid int
+	var flagservice_id int
+	var flagtemplate_id int
+	var flagtype int
+	var flagzone_ip string
+	cmd := &cobra.Command{
+		Use:   "create-dns-zone",
+		Short: "Creates a DNS zone for an owned domain. Prefer list-dns-create-candidates first. domain_id and zone_ip are required. Also send service_id from hosting_id when the domain has linked hosting or backend will be directadmin. Optional type/relid select the DNS package (relid from create-candidates); otherwise upstream picks the first eligible package. Do not send zone_id — the zone does not exist yet.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			if cmd.Flags().Changed("domain_name") {
+				body["domain_name"] = flagdomain_name
+			}
+			if cmd.Flags().Changed("relid") {
+				body["relid"] = flagrelid
+			}
+			if cmd.Flags().Changed("service_id") {
+				body["service_id"] = flagservice_id
+			}
+			if cmd.Flags().Changed("template_id") {
+				body["template_id"] = flagtemplate_id
+			}
+			if cmd.Flags().Changed("type") {
+				body["type"] = flagtype
+			}
+			body["zone_ip"] = flagzone_ip
+			return client.Do("POST", "/dns/create-zone", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "Zone domain name (FQDN). Optional; upstream resolves from domain_id when omitted.")
+	cmd.Flags().IntVar(&flagrelid, "relid", 0, "Related service id matching the zone type (from list-dns-create-candidates relid). Optional with type; for HOSTING/ADDON often the same value sent as service_id.")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "WHMCS hosting service id — pass list-dns-zones / create-candidates hosting_id (or relid for HOSTING) as service_id. Helps DirectAdmin create routing when hosting is linked.")
+	cmd.Flags().IntVar(&flagtemplate_id, "template_id", 0, "Optional DNS template id to apply after zone creation")
+	cmd.Flags().IntVar(&flagtype, "type", 0, "Zone type from list-dns-create-candidates: 0=OTHER, 1=DOMAIN, 2=HOSTING, 3=ADDON. Optional; upstream defaults from eligible packages.")
+	cmd.Flags().StringVar(&flagzone_ip, "zone_ip", "", "Apex A record IPv4 for the new zone. Required by DNS Manager create.")
+	_ = cmd.MarkFlagRequired("zone_ip")
+	return cmd
+}
+
 // registerDeleteRdnsRecordCmd returns the cobra command for DeleteRdnsRecord
 // POST /dns/delete-rdns-record
 func registerDeleteRdnsRecordCmd(client *Client) *cobra.Command {
@@ -268,9 +336,8 @@ func registerDeleteRdnsRecordCmd(client *Client) *cobra.Command {
 		Use:   "delete-rdns-record",
 		Short: "Deletes a PTR (rDNS) record owned by the authenticated client",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"record_id": flagrecord_id,
-			}
+			body := map[string]interface{}{}
+			body["record_id"] = flagrecord_id
 			return client.Do("POST", "/dns/delete-rdns-record", body)
 		},
 	}
@@ -292,17 +359,26 @@ func registerDeleteDnsRecordCmd(client *Client) *cobra.Command {
 		Use:   "delete-dns-record",
 		Short: "Deletes a DNS record from a zone. Legacy callers pass zone_id only (DNS Manager v1). For DirectAdmin, pass backend=directadmin with domain_id; upstream v2 receives domain_id and record only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("backend") {
+				body["backend"] = flagbackend
+			}
+			if cmd.Flags().Changed("domain_id") {
+				body["domain_id"] = flagdomain_id
+			}
+			if cmd.Flags().Changed("domain_name") {
+				body["domain_name"] = flagdomain_name
+			}
 			var parsedrecord json.RawMessage
 			if err := json.Unmarshal([]byte(flagrecord), &parsedrecord); err != nil {
 				return fmt.Errorf("invalid JSON for --record: %w", err)
 			}
-			body := map[string]interface{}{
-				"backend": flagbackend,
-				"domain_id": flagdomain_id,
-				"domain_name": flagdomain_name,
-				"record": parsedrecord,
-				"service_id": flagservice_id,
-				"zone_id": flagzone_id,
+			body["record"] = parsedrecord
+			if cmd.Flags().Changed("service_id") {
+				body["service_id"] = flagservice_id
+			}
+			if cmd.Flags().Changed("zone_id") {
+				body["zone_id"] = flagzone_id
 			}
 			return client.Do("POST", "/dns/delete-record", body)
 		},
@@ -312,8 +388,63 @@ func registerDeleteDnsRecordCmd(client *Client) *cobra.Command {
 	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional for dns_manager when zone_id is provided. Not forwarded on DirectAdmin mutations.")
 	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`. For edit and delete, `id` must be the\nnumeric zone line from get-dns-zone-details (a positive integer string).")
 	_ = cmd.MarkFlagRequired("record")
-	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "Optional WHMCS hosting service id from list-dns-zones hosting_id. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "WHMCS hosting service id — pass list-dns-zones hosting_id. Use when domain_id is null (hosting-only). Not forwarded on DirectAdmin record mutations.")
 	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details; required for dns_manager / legacy callers")
+	return cmd
+}
+
+// registerDeleteDnsZoneCmd returns the cobra command for DeleteDnsZone
+// POST /dns/delete-zone
+func registerDeleteDnsZoneCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flagservice_id int
+	var flagzone_id string
+	cmd := &cobra.Command{
+		Use:   "delete-dns-zone",
+		Short: "Deletes a live DNS Manager zone (all records). zone_id from list-dns-zones is required. Optional domain_id/service_id are forwarded when present. DirectAdmin rows with null zone_id are not supported by upstream deletezone.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("domain_id") {
+				body["domain_id"] = flagdomain_id
+			}
+			if cmd.Flags().Changed("service_id") {
+				body["service_id"] = flagservice_id
+			}
+			body["zone_id"] = flagzone_id
+			return client.Do("POST", "/dns/delete-zone", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Optional domain id from list-dns-zones when available.")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "Optional hosting service id (list-dns-zones hosting_id) when available.")
+	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS Manager zone id from list-dns-zones. Required by upstream deletezone.")
+	_ = cmd.MarkFlagRequired("zone_id")
+	return cmd
+}
+
+// registerEditRdnsRecordCmd returns the cobra command for EditRdnsRecord
+// POST /dns/edit-rdns-record
+func registerEditRdnsRecordCmd(client *Client) *cobra.Command {
+	var flaghostname string
+	var flagrecord_id int
+	var flagttl int
+	cmd := &cobra.Command{
+		Use:   "edit-rdns-record",
+		Short: "Updates the hostname and optional TTL of a PTR (rDNS) record owned by the authenticated client. The record_id remains valid after the call.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["hostname"] = flaghostname
+			body["record_id"] = flagrecord_id
+			if cmd.Flags().Changed("ttl") {
+				body["ttl"] = flagttl
+			}
+			return client.Do("POST", "/dns/edit-rdns-record", body)
+		},
+	}
+	cmd.Flags().StringVar(&flaghostname, "hostname", "", "Updated PTR target hostname")
+	_ = cmd.MarkFlagRequired("hostname")
+	cmd.Flags().IntVar(&flagrecord_id, "record_id", 0, "ID of the PTR record to update")
+	_ = cmd.MarkFlagRequired("record_id")
+	cmd.Flags().IntVar(&flagttl, "ttl", 0, "Time-to-live in seconds. When omitted, upstream keeps the existing TTL; clamped to [30, 86400] when set")
 	return cmd
 }
 
@@ -330,17 +461,26 @@ func registerEditDnsRecordCmd(client *Client) *cobra.Command {
 		Use:   "edit-dns-record",
 		Short: "Edits a DNS record in a zone. Legacy callers pass zone_id only (DNS Manager v1). For DirectAdmin, pass backend=directadmin with domain_id; upstream v2 receives domain_id and record only.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("backend") {
+				body["backend"] = flagbackend
+			}
+			if cmd.Flags().Changed("domain_id") {
+				body["domain_id"] = flagdomain_id
+			}
+			if cmd.Flags().Changed("domain_name") {
+				body["domain_name"] = flagdomain_name
+			}
 			var parsedrecord json.RawMessage
 			if err := json.Unmarshal([]byte(flagrecord), &parsedrecord); err != nil {
 				return fmt.Errorf("invalid JSON for --record: %w", err)
 			}
-			body := map[string]interface{}{
-				"backend": flagbackend,
-				"domain_id": flagdomain_id,
-				"domain_name": flagdomain_name,
-				"record": parsedrecord,
-				"service_id": flagservice_id,
-				"zone_id": flagzone_id,
+			body["record"] = parsedrecord
+			if cmd.Flags().Changed("service_id") {
+				body["service_id"] = flagservice_id
+			}
+			if cmd.Flags().Changed("zone_id") {
+				body["zone_id"] = flagzone_id
 			}
 			return client.Do("POST", "/dns/edit-record", body)
 		},
@@ -350,7 +490,7 @@ func registerEditDnsRecordCmd(client *Client) *cobra.Command {
 	cmd.Flags().StringVar(&flagdomain_name, "domain_name", "", "DNS zone domain name (FQDN); optional for dns_manager when zone_id is provided. Not forwarded on DirectAdmin mutations.")
 	cmd.Flags().StringVar(&flagrecord, "record", "", "DNS record fields for add, edit, or delete via DNSManager.\n\nSee `DnsRecordInfo` for how `content` and structured fields map to upstream record data.\nDelete requires only `id`, `name`, and `type`. For edit and delete, `id` must be the\nnumeric zone line from get-dns-zone-details (a positive integer string).")
 	_ = cmd.MarkFlagRequired("record")
-	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "Optional WHMCS hosting service id from list-dns-zones hosting_id. Not forwarded on DirectAdmin mutations.")
+	cmd.Flags().IntVar(&flagservice_id, "service_id", 0, "WHMCS hosting service id — pass list-dns-zones hosting_id. Use when domain_id is null (hosting-only). Not forwarded on DirectAdmin record mutations.")
 	cmd.Flags().StringVar(&flagzone_id, "zone_id", "", "DNS zone identifier from list-dns-zones or get-dns-zone-details; required for dns_manager / legacy callers")
 	return cmd
 }
@@ -364,10 +504,11 @@ func registerGetDnsZoneDetailsCmd(client *Client) *cobra.Command {
 		Use:   "get-dns-zone-details",
 		Short: "Retrieves DNS zone details and records for an owned domain. Omit backend for the legacy DNS Manager (v1) path; set backend from list-dns-zones to route DirectAdmin zones to v2.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"backend": flagbackend,
-				"domain_id": flagdomain_id,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("backend") {
+				body["backend"] = flagbackend
 			}
+			body["domain_id"] = flagdomain_id
 			return client.Do("POST", "/dns/get-zone", body)
 		},
 	}
@@ -384,8 +525,7 @@ func registerListDnsCreateCandidatesCmd(client *Client) *cobra.Command {
 		Use:   "list-dns-create-candidates",
 		Short: "Lists domains and services eligible for new DNS zone creation.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/dns/list-create-candidates", body)
 		},
 	}
@@ -399,8 +539,7 @@ func registerListRdnsRecordsCmd(client *Client) *cobra.Command {
 		Use:   "list-rdns-records",
 		Short: "Lists all rDNS (PTR) records and available services for the authenticated client",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/dns/list-rdns-records", body)
 		},
 	}
@@ -412,13 +551,82 @@ func registerListRdnsRecordsCmd(client *Client) *cobra.Command {
 func registerListDnsZonesCmd(client *Client) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "list-dns-zones",
-		Short: "Lists DNS zones belonging to the authenticated client.",
+		Short: "Lists DNS zones belonging to the authenticated client. Use each row's ids on later calls: domain_id preferred; zone_id for dns_manager record/zone mutations; hosting_id as service_id when domain_id is null (hosting-only zone).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/dns/list-zones", body)
 		},
 	}
+	return cmd
+}
+
+// registerAddDnssecRecordCmd returns the cobra command for AddDnssecRecord
+// POST /domain/add-dnssec-record
+func registerAddDnssecRecordCmd(client *Client) *cobra.Command {
+	var flagalg int
+	var flagdigest string
+	var flagdigest_type int
+	var flagdomain_id string
+	var flagkey_tag int
+	cmd := &cobra.Command{
+		Use:   "add-dnssec-record",
+		Short: "Adds a DNSSEC DS record for an owned domain on supported registrars.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["alg"] = flagalg
+			body["digest"] = flagdigest
+			body["digest_type"] = flagdigest_type
+			body["domain_id"] = flagdomain_id
+			body["key_tag"] = flagkey_tag
+			return client.Do("POST", "/domain/add-dnssec-record", body)
+		},
+	}
+	cmd.Flags().IntVar(&flagalg, "alg", 0, "DNSSEC algorithm (1-255)")
+	_ = cmd.MarkFlagRequired("alg")
+	cmd.Flags().StringVar(&flagdigest, "digest", "", "Hex digest; spaces are stripped upstream")
+	_ = cmd.MarkFlagRequired("digest")
+	cmd.Flags().IntVar(&flagdigest_type, "digest_type", 0, "DNSSEC digest type (1-255)")
+	_ = cmd.MarkFlagRequired("digest_type")
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().IntVar(&flagkey_tag, "key_tag", 0, "DNSSEC key tag (0-65535)")
+	_ = cmd.MarkFlagRequired("key_tag")
+	return cmd
+}
+
+// registerAddDomainRedirectCmd returns the cobra command for AddDomainRedirect
+// POST /domain/add-redirect
+func registerAddDomainRedirectCmd(client *Client) *cobra.Command {
+	var flagaddress string
+	var flagdomain_id string
+	var flagoverride bool
+	var flagtype string
+	var flagurl string
+	cmd := &cobra.Command{
+		Use:   "add-domain-redirect",
+		Short: "Creates or updates HTTP redirect configuration for an owned domain. Upstream may create a DNS zone and point @/www A records at the redirector. If conflicting A records exist, retry with override=true after confirming via get-redirect-details.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("address") {
+				body["address"] = flagaddress
+			}
+			body["domain_id"] = flagdomain_id
+			if cmd.Flags().Changed("override") {
+				body["override"] = flagoverride
+			}
+			body["type"] = flagtype
+			body["url"] = flagurl
+			return client.Do("POST", "/domain/add-redirect", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagaddress, "address", "", "Optional redirector address override (passed through when present)")
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().BoolVar(&flagoverride, "override", false, "When true, force-replace conflicting @/www A records that do not point at the redirector")
+	cmd.Flags().StringVar(&flagtype, "type", "", "Redirect type: 301, 302, permanent, or temporary")
+	_ = cmd.MarkFlagRequired("type")
+	cmd.Flags().StringVar(&flagurl, "url", "", "Redirect target URL (absolute http(s) URL)")
+	_ = cmd.MarkFlagRequired("url")
 	return cmd
 }
 
@@ -430,19 +638,98 @@ func registerCheckDomainAvailabilityCmd(client *Client) *cobra.Command {
 	var flagdomains string
 	cmd := &cobra.Command{
 		Use:   "check-domain-availability",
-		Short: "Checks domain name availability for a single domain or a comma-separated batch. Exactly one of domain or domains must be provided. Returns pricing, suggestions, and register_url scoped to the requested currency.",
+		Short: "Use to check availability/pricing for known domain names. Pass exactly one of domain or domains (comma-separated, max 20); API rejects both omitted or both set. Optional currency (default ZAR). Returns availability, prices, and an external register_url. Prefer suggest_domains for name ideas.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"currency": flagcurrency,
-				"domain": flagdomain,
-				"domains": flagdomains,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("currency") {
+				body["currency"] = flagcurrency
+			}
+			if cmd.Flags().Changed("domain") {
+				body["domain"] = flagdomain
+			}
+			if cmd.Flags().Changed("domains") {
+				body["domains"] = flagdomains
 			}
 			return client.Do("POST", "/domain/check-availability", body)
 		},
 	}
-	cmd.Flags().StringVar(&flagcurrency, "currency", "", "Currency for pricing. Accepts ISO code, symbol, country name, or numeric ID. Defaults to ZAR.")
-	cmd.Flags().StringVar(&flagdomain, "domain", "", "A single domain name to look up, e.g. \"example.co.za\". Required unless domains is provided.")
-	cmd.Flags().StringVar(&flagdomains, "domains", "", "Comma-separated list of domain names for a batch check. Required unless domain is provided.")
+	cmd.Flags().StringVar(&flagcurrency, "currency", "", "Optional; default ZAR. Preferred: ZAR, USD, NGN, KES, GHS, EUR, EGP.")
+	cmd.Flags().StringVar(&flagdomain, "domain", "", "Optional single FQDN. Use instead of domains.")
+	cmd.Flags().StringVar(&flagdomains, "domains", "", "Optional comma-separated FQDNs (1–20). Use instead of domain.")
+	return cmd
+}
+
+// registerDeleteDnssecRecordCmd returns the cobra command for DeleteDnssecRecord
+// POST /domain/delete-dnssec-record
+func registerDeleteDnssecRecordCmd(client *Client) *cobra.Command {
+	var flagalg int
+	var flagdigest string
+	var flagdigest_type int
+	var flagdomain_id string
+	var flagkey_tag int
+	cmd := &cobra.Command{
+		Use:   "delete-dnssec-record",
+		Short: "Removes a DNSSEC DS record from an owned domain on supported registrars.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["alg"] = flagalg
+			body["digest"] = flagdigest
+			body["digest_type"] = flagdigest_type
+			body["domain_id"] = flagdomain_id
+			body["key_tag"] = flagkey_tag
+			return client.Do("POST", "/domain/delete-dnssec-record", body)
+		},
+	}
+	cmd.Flags().IntVar(&flagalg, "alg", 0, "DNSSEC algorithm (1-255)")
+	_ = cmd.MarkFlagRequired("alg")
+	cmd.Flags().StringVar(&flagdigest, "digest", "", "Hex digest identifying the DS record to remove")
+	_ = cmd.MarkFlagRequired("digest")
+	cmd.Flags().IntVar(&flagdigest_type, "digest_type", 0, "DNSSEC digest type (1-255)")
+	_ = cmd.MarkFlagRequired("digest_type")
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().IntVar(&flagkey_tag, "key_tag", 0, "DNSSEC key tag (0-65535)")
+	_ = cmd.MarkFlagRequired("key_tag")
+	return cmd
+}
+
+// registerDeletePrivateNameserverCmd returns the cobra command for DeletePrivateNameserver
+// POST /domain/delete-private-nameserver
+func registerDeletePrivateNameserverCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flagnameserver string
+	cmd := &cobra.Command{
+		Use:   "delete-private-nameserver",
+		Short: "Deletes a private/child nameserver glue host for an owned domain.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			body["nameserver"] = flagnameserver
+			return client.Do("POST", "/domain/delete-private-nameserver", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().StringVar(&flagnameserver, "nameserver", "", "Child nameserver hostname to delete")
+	_ = cmd.MarkFlagRequired("nameserver")
+	return cmd
+}
+
+// registerDeleteDomainRedirectCmd returns the cobra command for DeleteDomainRedirect
+// POST /domain/delete-redirect
+func registerDeleteDomainRedirectCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	cmd := &cobra.Command{
+		Use:   "delete-domain-redirect",
+		Short: "Removes redirect configuration for an owned domain from the redirector service. DNS records and zones are not modified.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			return client.Do("POST", "/domain/delete-redirect", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
 	return cmd
 }
 
@@ -454,9 +741,8 @@ func registerGetDomainCmd(client *Client) *cobra.Command {
 		Use:   "get-domain",
 		Short: "Gets details for an owned domain.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"domain_id": flagdomain_id,
-			}
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
 			return client.Do("POST", "/domain/get-domain", body)
 		},
 	}
@@ -473,10 +759,27 @@ func registerGetDomainContactsCmd(client *Client) *cobra.Command {
 		Use:   "get-domain-contacts",
 		Short: "Retrieves WHOIS contact information for an owned domain. Contact field names vary by TLD and registrar; use the returned structure when building custom contact update payloads.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"domain_id": flagdomain_id,
-			}
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
 			return client.Do("POST", "/domain/get-domain-contacts", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	return cmd
+}
+
+// registerGetDomainRedirectDetailsCmd returns the cobra command for GetDomainRedirectDetails
+// POST /domain/get-redirect-details
+func registerGetDomainRedirectDetailsCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	cmd := &cobra.Command{
+		Use:   "get-domain-redirect-details",
+		Short: "Retrieves redirect configuration and DNS readiness flags for an owned domain.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			return client.Do("POST", "/domain/get-redirect-details", body)
 		},
 	}
 	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
@@ -492,9 +795,8 @@ func registerListDnssecRecordsCmd(client *Client) *cobra.Command {
 		Use:   "list-dnssec-records",
 		Short: "Lists DNSSEC DS records configured for an owned domain.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"domain_id": flagdomain_id,
-			}
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
 			return client.Do("POST", "/domain/list-dnssec-records", body)
 		},
 	}
@@ -510,8 +812,7 @@ func registerListDomainsCmd(client *Client) *cobra.Command {
 		Use:   "list-domains",
 		Short: "List all domains belonging to the authenticated client.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/domain/list-domains", body)
 		},
 	}
@@ -525,11 +826,87 @@ func registerListDomainsRequiringDataCmd(client *Client) *cobra.Command {
 		Use:   "list-domains-requiring-data",
 		Short: "Lists domains belonging to the authenticated client that require additional registrar or contact data.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/domain/list-domains-requiring-data", body)
 		},
 	}
+	return cmd
+}
+
+// registerListDomainRedirectsCmd returns the cobra command for ListDomainRedirects
+// POST /domain/list-redirects
+func registerListDomainRedirectsCmd(client *Client) *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "list-domain-redirects",
+		Short: "Lists configured domain redirects for the authenticated client.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			return client.Do("POST", "/domain/list-redirects", body)
+		},
+	}
+	return cmd
+}
+
+// registerModifyPrivateNameserverCmd returns the cobra command for ModifyPrivateNameserver
+// POST /domain/modify-private-nameserver
+func registerModifyPrivateNameserverCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flagnameserver string
+	var flagnew_ip_address string
+	var flagnew_nameserver string
+	var flagold_ip_address string
+	cmd := &cobra.Command{
+		Use:   "modify-private-nameserver",
+		Short: "Modifies a private/child nameserver. Provide at least one of new_nameserver or new_ip_address. Some registrars (COZA/COCCA) require new_ip_address and reject hostname changes.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			body["nameserver"] = flagnameserver
+			if cmd.Flags().Changed("new_ip_address") {
+				body["new_ip_address"] = flagnew_ip_address
+			}
+			if cmd.Flags().Changed("new_nameserver") {
+				body["new_nameserver"] = flagnew_nameserver
+			}
+			if cmd.Flags().Changed("old_ip_address") {
+				body["old_ip_address"] = flagold_ip_address
+			}
+			return client.Do("POST", "/domain/modify-private-nameserver", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().StringVar(&flagnameserver, "nameserver", "", "Existing child nameserver hostname to modify")
+	_ = cmd.MarkFlagRequired("nameserver")
+	cmd.Flags().StringVar(&flagnew_ip_address, "new_ip_address", "", "New glue IPv4 or IPv6 address")
+	cmd.Flags().StringVar(&flagnew_nameserver, "new_nameserver", "", "New hostname; unsupported for some registrars (COZA/COCCA)")
+	cmd.Flags().StringVar(&flagold_ip_address, "old_ip_address", "", "Current glue IP when the registrar requires it")
+	return cmd
+}
+
+// registerRegisterPrivateNameserverCmd returns the cobra command for RegisterPrivateNameserver
+// POST /domain/register-private-nameserver
+func registerRegisterPrivateNameserverCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flagip_address string
+	var flagnameserver string
+	cmd := &cobra.Command{
+		Use:   "register-private-nameserver",
+		Short: "Registers a private/child nameserver (glue host) under an owned domain. Requires available_features.private_nameservers on get-domain. Distinct from update-nameservers.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			body["ip_address"] = flagip_address
+			body["nameserver"] = flagnameserver
+			return client.Do("POST", "/domain/register-private-nameserver", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().StringVar(&flagip_address, "ip_address", "", "Glue IPv4 or IPv6 address for the nameserver")
+	_ = cmd.MarkFlagRequired("ip_address")
+	cmd.Flags().StringVar(&flagnameserver, "nameserver", "", "Full child nameserver hostname (e.g. ns1.example.com)")
+	_ = cmd.MarkFlagRequired("nameserver")
 	return cmd
 }
 
@@ -542,14 +919,13 @@ func registerSaveDomainRequiredDataCmd(client *Client) *cobra.Command {
 		Use:   "save-domain-required-data",
 		Short: "Saves additional registrar field values for a pending domain. Keys must match additionalFields[].name from list-domains-requiring-data.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
 			var parsedfields json.RawMessage
 			if err := json.Unmarshal([]byte(flagfields), &parsedfields); err != nil {
 				return fmt.Errorf("invalid JSON for --fields: %w", err)
 			}
-			body := map[string]interface{}{
-				"domain_id": flagdomain_id,
-				"fields": parsedfields,
-			}
+			body["fields"] = parsedfields
 			return client.Do("POST", "/domain/save-domain-required-data", body)
 		},
 	}
@@ -567,16 +943,17 @@ func registerSuggestDomainsCmd(client *Client) *cobra.Command {
 	var flagprompt string
 	cmd := &cobra.Command{
 		Use:   "suggest-domains",
-		Short: "Generates AI-powered domain name suggestions from a natural-language description. Returns suggested domains with availability status and pricing.",
+		Short: "Use for domain name ideas from a description. For specific domains, use check_domain_availability.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"currency": flagcurrency,
-				"prompt": flagprompt,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("currency") {
+				body["currency"] = flagcurrency
 			}
+			body["prompt"] = flagprompt
 			return client.Do("POST", "/domain/suggest", body)
 		},
 	}
-	cmd.Flags().StringVar(&flagcurrency, "currency", "", "Currency for pricing. Accepts ISO code, symbol, country name, or numeric ID. Defaults to ZAR.")
+	cmd.Flags().StringVar(&flagcurrency, "currency", "", "Optional; default ZAR. Preferred: ZAR, USD, NGN, KES, GHS, EUR, EGP.")
 	cmd.Flags().StringVar(&flagprompt, "prompt", "", "Natural-language description of the business or idea, e.g. \"my coffee shop\"")
 	_ = cmd.MarkFlagRequired("prompt")
 	return cmd
@@ -591,14 +968,13 @@ func registerUpdateDomainContactsCmd(client *Client) *cobra.Command {
 		Use:   "update-domain-contacts",
 		Short: "Updates WHOIS contact information for an owned domain. Each role (Registrant, Admin, Tech, Billing) uses a source type: owner (client profile), contact (saved WHMCS contact id), or custom (inline WHOIS fields). WHOIS values must be nested under fields; for owner and contact they are flattened upstream when present.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
 			var parsedcontacts json.RawMessage
 			if err := json.Unmarshal([]byte(flagcontacts), &parsedcontacts); err != nil {
 				return fmt.Errorf("invalid JSON for --contacts: %w", err)
 			}
-			body := map[string]interface{}{
-				"contacts": parsedcontacts,
-				"domain_id": flagdomain_id,
-			}
+			body["contacts"] = parsedcontacts
+			body["domain_id"] = flagdomain_id
 			return client.Do("POST", "/domain/update-domain-contacts", body)
 		},
 	}
@@ -620,12 +996,13 @@ func registerUpdateDomainSettingsCmd(client *Client) *cobra.Command {
 		Use:   "update-domain-settings",
 		Short: "Updates a single domain setting (auto-renew, ID protection, or paid addons). One setting per request.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"domain_id": flagdomain_id,
-				"gateway": flaggateway,
-				"setting": flagsetting,
-				"value": flagvalue,
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			if cmd.Flags().Changed("gateway") {
+				body["gateway"] = flaggateway
 			}
+			body["setting"] = flagsetting
+			body["value"] = flagvalue
 			return client.Do("POST", "/domain/update-domain-settings", body)
 		},
 	}
@@ -636,6 +1013,38 @@ func registerUpdateDomainSettingsCmd(client *Client) *cobra.Command {
 	_ = cmd.MarkFlagRequired("setting")
 	cmd.Flags().BoolVar(&flagvalue, "value", false, "New boolean value")
 	_ = cmd.MarkFlagRequired("value")
+	return cmd
+}
+
+// registerUpdateDomainLockStatusCmd returns the cobra command for UpdateDomainLockStatus
+// POST /domain/update-lock-status
+func registerUpdateDomainLockStatusCmd(client *Client) *cobra.Command {
+	var flagdomain_id string
+	var flaglock_status bool
+	var flagtwo_fa_backup string
+	var flagtwo_fa_code string
+	cmd := &cobra.Command{
+		Use:   "update-domain-lock-status",
+		Short: "Sets the registrar transfer lock for an owned domain. When the account has 2FA enabled, upstream may return 403 until two_fa_code (or two_fa_backup) is supplied.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			body["lock_status"] = flaglock_status
+			if cmd.Flags().Changed("two_fa_backup") {
+				body["two_fa_backup"] = flagtwo_fa_backup
+			}
+			if cmd.Flags().Changed("two_fa_code") {
+				body["two_fa_code"] = flagtwo_fa_code
+			}
+			return client.Do("POST", "/domain/update-lock-status", body)
+		},
+	}
+	cmd.Flags().StringVar(&flagdomain_id, "domain_id", "", "Domain service id - must be sent as a string")
+	_ = cmd.MarkFlagRequired("domain_id")
+	cmd.Flags().BoolVar(&flaglock_status, "lock_status", false, "True to lock (prevent transfer), false to unlock")
+	_ = cmd.MarkFlagRequired("lock_status")
+	cmd.Flags().StringVar(&flagtwo_fa_backup, "two_fa_backup", "", "Backup 2FA code when OTP is unavailable; forwarded as 2fa_backup")
+	cmd.Flags().StringVar(&flagtwo_fa_code, "two_fa_code", "", "OTP from email/TOTP when upstream returns 403 two-factor required; forwarded as 2fa_code")
 	return cmd
 }
 
@@ -652,13 +1061,18 @@ func registerUpdateDomainNameserversCmd(client *Client) *cobra.Command {
 		Use:   "update-domain-nameservers",
 		Short: "Updates nameservers for an owned domain. ns1 and ns2 are required; ns3 through ns5 are optional.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"domain_id": flagdomain_id,
-				"ns1": flagns1,
-				"ns2": flagns2,
-				"ns3": flagns3,
-				"ns4": flagns4,
-				"ns5": flagns5,
+			body := map[string]interface{}{}
+			body["domain_id"] = flagdomain_id
+			body["ns1"] = flagns1
+			body["ns2"] = flagns2
+			if cmd.Flags().Changed("ns3") {
+				body["ns3"] = flagns3
+			}
+			if cmd.Flags().Changed("ns4") {
+				body["ns4"] = flagns4
+			}
+			if cmd.Flags().Changed("ns5") {
+				body["ns5"] = flagns5
 			}
 			return client.Do("POST", "/domain/update-nameservers", body)
 		},
@@ -684,9 +1098,10 @@ func registerCancelVpsCmd(client *Client) *cobra.Command {
 		Use:   "cancel-vps",
 		Short: "Cancels a VPS service. This action is irreversible",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-				"type": flagtype,
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("type") {
+				body["type"] = flagtype
 			}
 			return client.Do("POST", "/vps/cancel", body)
 		},
@@ -707,11 +1122,14 @@ func registerCreateBackupCmd(client *Client) *cobra.Command {
 		Use:   "create-backup",
 		Short: "Creates a new backup for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"compress": flagcompress,
-				"mode": flagmode,
-				"service_id": flagservice_id,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("compress") {
+				body["compress"] = flagcompress
 			}
+			if cmd.Flags().Changed("mode") {
+				body["mode"] = flagmode
+			}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/create-backup", body)
 		},
 	}
@@ -735,18 +1153,19 @@ func registerCreateBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "create-backup-schedule",
 		Short: "Creates a new backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["compress"] = flagcompress
 			var parseddow json.RawMessage
 			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
 				return fmt.Errorf("invalid JSON for --dow: %w", err)
 			}
-			body := map[string]interface{}{
-				"compress": flagcompress,
-				"dow": parseddow,
-				"mailto": flagmailto,
-				"mode": flagmode,
-				"service_id": flagservice_id,
-				"starttime": flagstarttime,
+			body["dow"] = parseddow
+			if cmd.Flags().Changed("mailto") {
+				body["mailto"] = flagmailto
 			}
+			body["mode"] = flagmode
+			body["service_id"] = flagservice_id
+			body["starttime"] = flagstarttime
 			return client.Do("POST", "/vps/create-backup-schedule", body)
 		},
 	}
@@ -785,22 +1204,43 @@ func registerCreateFirewallRuleCmd(client *Client) *cobra.Command {
 		Use:   "create-firewall-rule",
 		Short: "Creates a new firewall rule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"comment": flagcomment,
-				"dest": flagdest,
-				"dport": flagdport,
-				"enable": flagenable,
-				"iface": flagiface,
-				"log": flaglog,
-				"macro": flagmacro,
-				"pos": flagpos,
-				"proto": flagproto,
-				"rule_action": flagrule_action,
-				"service_id": flagservice_id,
-				"source": flagsource,
-				"sport": flagsport,
-				"type": flagtype,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("comment") {
+				body["comment"] = flagcomment
 			}
+			if cmd.Flags().Changed("dest") {
+				body["dest"] = flagdest
+			}
+			if cmd.Flags().Changed("dport") {
+				body["dport"] = flagdport
+			}
+			if cmd.Flags().Changed("enable") {
+				body["enable"] = flagenable
+			}
+			if cmd.Flags().Changed("iface") {
+				body["iface"] = flagiface
+			}
+			if cmd.Flags().Changed("log") {
+				body["log"] = flaglog
+			}
+			if cmd.Flags().Changed("macro") {
+				body["macro"] = flagmacro
+			}
+			if cmd.Flags().Changed("pos") {
+				body["pos"] = flagpos
+			}
+			if cmd.Flags().Changed("proto") {
+				body["proto"] = flagproto
+			}
+			body["rule_action"] = flagrule_action
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("source") {
+				body["source"] = flagsource
+			}
+			if cmd.Flags().Changed("sport") {
+				body["sport"] = flagsport
+			}
+			body["type"] = flagtype
 			return client.Do("POST", "/vps/create-firewall-rule", body)
 		},
 	}
@@ -843,23 +1283,42 @@ func registerCreateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "create-notification",
 		Short: "Creates a new notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedemail_address json.RawMessage
-			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
-				return fmt.Errorf("invalid JSON for --email_address: %w", err)
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("cpu_usage") {
+				body["cpu_usage"] = flagcpu_usage
 			}
-			body := map[string]interface{}{
-				"cpu_usage": flagcpu_usage,
-				"data_timeframe": flagdata_timeframe,
-				"disk_read": flagdisk_read,
-				"disk_write": flagdisk_write,
-				"email_address": parsedemail_address,
-				"exceed_all": flagexceed_all,
-				"memory_usage": flagmemory_usage,
-				"name": flagname,
-				"network_traffic": flagnetwork_traffic,
-				"notification_interval": flagnotification_interval,
-				"service_id": flagservice_id,
-				"status": flagstatus,
+			if cmd.Flags().Changed("data_timeframe") {
+				body["data_timeframe"] = flagdata_timeframe
+			}
+			if cmd.Flags().Changed("disk_read") {
+				body["disk_read"] = flagdisk_read
+			}
+			if cmd.Flags().Changed("disk_write") {
+				body["disk_write"] = flagdisk_write
+			}
+			if cmd.Flags().Changed("email_address") {
+				var parsedemail_address json.RawMessage
+				if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
+					return fmt.Errorf("invalid JSON for --email_address: %w", err)
+				}
+				body["email_address"] = parsedemail_address
+			}
+			if cmd.Flags().Changed("exceed_all") {
+				body["exceed_all"] = flagexceed_all
+			}
+			if cmd.Flags().Changed("memory_usage") {
+				body["memory_usage"] = flagmemory_usage
+			}
+			body["name"] = flagname
+			if cmd.Flags().Changed("network_traffic") {
+				body["network_traffic"] = flagnetwork_traffic
+			}
+			if cmd.Flags().Changed("notification_interval") {
+				body["notification_interval"] = flagnotification_interval
+			}
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("status") {
+				body["status"] = flagstatus
 			}
 			return client.Do("POST", "/vps/create-notification", body)
 		},
@@ -890,13 +1349,14 @@ func registerCreateOrderCmd(client *Client) *cobra.Command {
 		Use:   "create-order",
 		Short: "Creates an order for a VPS service. Returns payment status; on failure also includes payment_error with code and message.",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
 			var parsedproducts json.RawMessage
 			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
 				return fmt.Errorf("invalid JSON for --products: %w", err)
 			}
-			body := map[string]interface{}{
-				"products": parsedproducts,
-				"promo": flagpromo,
+			body["products"] = parsedproducts
+			if cmd.Flags().Changed("promo") {
+				body["promo"] = flagpromo
 			}
 			return client.Do("POST", "/vps/create-order", body)
 		},
@@ -926,23 +1386,40 @@ func registerCreatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "create-power-task",
 		Short: "Creates a new power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays json.RawMessage
-			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
-				return fmt.Errorf("invalid JSON for --days: %w", err)
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("days") {
+				var parseddays json.RawMessage
+				if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+					return fmt.Errorf("invalid JSON for --days: %w", err)
+				}
+				body["days"] = parseddays
 			}
-			body := map[string]interface{}{
-				"days": parseddays,
-				"description": flagdescription,
-				"end_date": flagend_date,
-				"end_time": flagend_time,
-				"job_hour": flagjob_hour,
-				"job_minutes": flagjob_minutes,
-				"job_time": flagjob_time,
-				"job_type": flagjob_type,
-				"power_task_action": flagpower_task_action,
-				"service_id": flagservice_id,
-				"start_date": flagstart_date,
-				"start_time": flagstart_time,
+			if cmd.Flags().Changed("description") {
+				body["description"] = flagdescription
+			}
+			if cmd.Flags().Changed("end_date") {
+				body["end_date"] = flagend_date
+			}
+			if cmd.Flags().Changed("end_time") {
+				body["end_time"] = flagend_time
+			}
+			if cmd.Flags().Changed("job_hour") {
+				body["job_hour"] = flagjob_hour
+			}
+			if cmd.Flags().Changed("job_minutes") {
+				body["job_minutes"] = flagjob_minutes
+			}
+			if cmd.Flags().Changed("job_time") {
+				body["job_time"] = flagjob_time
+			}
+			if cmd.Flags().Changed("job_type") {
+				body["job_type"] = flagjob_type
+			}
+			body["power_task_action"] = flagpower_task_action
+			body["service_id"] = flagservice_id
+			body["start_date"] = flagstart_date
+			if cmd.Flags().Changed("start_time") {
+				body["start_time"] = flagstart_time
 			}
 			return client.Do("POST", "/vps/create-power-task", body)
 		},
@@ -976,12 +1453,15 @@ func registerCreateSnapshotCmd(client *Client) *cobra.Command {
 		Use:   "create-snapshot",
 		Short: "Creates a new snapshot for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"description": flagdescription,
-				"include_ram": flaginclude_ram,
-				"name": flagname,
-				"service_id": flagservice_id,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("description") {
+				body["description"] = flagdescription
 			}
+			if cmd.Flags().Changed("include_ram") {
+				body["include_ram"] = flaginclude_ram
+			}
+			body["name"] = flagname
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/create-snapshot", body)
 		},
 	}
@@ -1009,19 +1489,28 @@ func registerCreateSnapshotJobCmd(client *Client) *cobra.Command {
 		Use:   "create-snapshot-job",
 		Short: "Creates a new snapshot job for a VPS service. Use period='hourly' with run_every, or period='daily' with days and start_time.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays json.RawMessage
-			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
-				return fmt.Errorf("invalid JSON for --days: %w", err)
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("days") {
+				var parseddays json.RawMessage
+				if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+					return fmt.Errorf("invalid JSON for --days: %w", err)
+				}
+				body["days"] = parseddays
 			}
-			body := map[string]interface{}{
-				"days": parseddays,
-				"description": flagdescription,
-				"name": flagname,
-				"period": flagperiod,
-				"run_every": flagrun_every,
-				"service_id": flagservice_id,
-				"start_time": flagstart_time,
-				"vmstate": flagvmstate,
+			if cmd.Flags().Changed("description") {
+				body["description"] = flagdescription
+			}
+			body["name"] = flagname
+			body["period"] = flagperiod
+			if cmd.Flags().Changed("run_every") {
+				body["run_every"] = flagrun_every
+			}
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("start_time") {
+				body["start_time"] = flagstart_time
+			}
+			if cmd.Flags().Changed("vmstate") {
+				body["vmstate"] = flagvmstate
 			}
 			return client.Do("POST", "/vps/create-snapshot-job", body)
 		},
@@ -1049,10 +1538,9 @@ func registerDeleteBackupCmd(client *Client) *cobra.Command {
 		Use:   "delete-backup",
 		Short: "Deletes a specific backup from a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"backup_id": flagbackup_id,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["backup_id"] = flagbackup_id
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/delete-backup", body)
 		},
 	}
@@ -1072,10 +1560,9 @@ func registerDeleteBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "delete-backup-schedule",
 		Short: "Deletes a backup schedule from a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"schedule_id": flagschedule_id,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["schedule_id"] = flagschedule_id
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/delete-backup-schedule", body)
 		},
 	}
@@ -1095,10 +1582,9 @@ func registerDeleteFirewallRuleCmd(client *Client) *cobra.Command {
 		Use:   "delete-firewall-rule",
 		Short: "Deletes a firewall rule from a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"pos": flagpos,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["pos"] = flagpos
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/delete-firewall-rule", body)
 		},
 	}
@@ -1118,10 +1604,9 @@ func registerDeleteNotificationCmd(client *Client) *cobra.Command {
 		Use:   "delete-notification",
 		Short: "Deletes a notification from a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"notification_id": flagnotification_id,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["notification_id"] = flagnotification_id
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/delete-notification", body)
 		},
 	}
@@ -1141,10 +1626,9 @@ func registerDeletePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "delete-power-task",
 		Short: "Deletes a power task from a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-				"task_id": flagtask_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
+			body["task_id"] = flagtask_id
 			return client.Do("POST", "/vps/delete-power-task", body)
 		},
 	}
@@ -1164,10 +1648,9 @@ func registerDeleteSnapshotCmd(client *Client) *cobra.Command {
 		Use:   "delete-snapshot",
 		Short: "Deletes a specific snapshot from a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-				"snapshot_name": flagsnapshot_name,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
+			body["snapshot_name"] = flagsnapshot_name
 			return client.Do("POST", "/vps/delete-snapshot", body)
 		},
 	}
@@ -1187,10 +1670,9 @@ func registerDeleteSnapshotJobCmd(client *Client) *cobra.Command {
 		Use:   "delete-snapshot-job",
 		Short: "Deletes a snapshot job from a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"job_id": flagjob_id,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["job_id"] = flagjob_id
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/delete-snapshot-job", body)
 		},
 	}
@@ -1215,19 +1697,20 @@ func registerEditBackupScheduleCmd(client *Client) *cobra.Command {
 		Use:   "edit-backup-schedule",
 		Short: "Edits an existing backup schedule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
+			body["compress"] = flagcompress
 			var parseddow json.RawMessage
 			if err := json.Unmarshal([]byte(flagdow), &parseddow); err != nil {
 				return fmt.Errorf("invalid JSON for --dow: %w", err)
 			}
-			body := map[string]interface{}{
-				"compress": flagcompress,
-				"dow": parseddow,
-				"mailto": flagmailto,
-				"mode": flagmode,
-				"schedule_id": flagschedule_id,
-				"service_id": flagservice_id,
-				"starttime": flagstarttime,
+			body["dow"] = parseddow
+			if cmd.Flags().Changed("mailto") {
+				body["mailto"] = flagmailto
 			}
+			body["mode"] = flagmode
+			body["schedule_id"] = flagschedule_id
+			body["service_id"] = flagservice_id
+			body["starttime"] = flagstarttime
 			return client.Do("POST", "/vps/edit-backup-schedule", body)
 		},
 	}
@@ -1256,9 +1739,12 @@ func registerGetCatalogueCmd(client *Client) *cobra.Command {
 		Use:   "get-catalogue",
 		Short: "Retrieves the product catalogue, optionally filtered by group or product",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"group_id": flaggroup_id,
-				"product_id": flagproduct_id,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("group_id") {
+				body["group_id"] = flaggroup_id
+			}
+			if cmd.Flags().Changed("product_id") {
+				body["product_id"] = flagproduct_id
 			}
 			return client.Do("POST", "/vps/get-catalogue", body)
 		},
@@ -1276,9 +1762,8 @@ func registerGetVpsConfigCmd(client *Client) *cobra.Command {
 		Use:   "get-vps-config",
 		Short: "Retrieves VPS configuration settings including name, hostname, auto-start, boot order, and CD-ROM",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/get-config", body)
 		},
 	}
@@ -1295,9 +1780,8 @@ func registerGetVpsDetailsCmd(client *Client) *cobra.Command {
 		Use:   "get-vps-details",
 		Short: "Gets detailed information about a VPS service including configuration, network settings, and statistics. Credentials.password is always \"<redacted>\"; plaintext passwords are never returned. To retrieve the password securely, use GetEncryptedPassword (/vps/get-encrypted-password).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/get-details", body)
 		},
 	}
@@ -1315,10 +1799,9 @@ func registerGetEncryptedPasswordCmd(client *Client) *cobra.Command {
 		Use:   "get-encrypted-password",
 		Short: "Retrieves the VPS username and root password without exposing plaintext over the API. Send a PEM-encoded RSA 4096-bit public key; the API encrypts the password with RSA-OAEP (SHA-256), and returns base64 ciphertext plus encryption metadata. Never send the private key. Invalid or non-4096-bit keys return HTTP 422 ValidationError. Generate a key with: openssl genrsa -out private.pem 4096 && openssl rsa -in private.pem -pubout -out public.pem. Decrypt with: echo CIPHERTEXT | base64 -d | openssl pkeyutl -decrypt -inkey private.pem -pkeyopt rsa_padding_mode:oaep -pkeyopt rsa_oaep_md:sha256 -pkeyopt rsa_mgf1_md:sha256 (macOS: base64 -D).",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"public_key": flagpublic_key,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["public_key"] = flagpublic_key
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/get-encrypted-password", body)
 		},
 	}
@@ -1337,9 +1820,8 @@ func registerListBackupSchedulesCmd(client *Client) *cobra.Command {
 		Use:   "list-backup-schedules",
 		Short: "Retrieves the list of backup schedules for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-backup-schedules", body)
 		},
 	}
@@ -1356,9 +1838,8 @@ func registerListBackupsCmd(client *Client) *cobra.Command {
 		Use:   "list-backups",
 		Short: "Retrieves the list of backups for a VPS service including quota information and backup configuration options",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-backups", body)
 		},
 	}
@@ -1375,9 +1856,8 @@ func registerListFirewallRulesCmd(client *Client) *cobra.Command {
 		Use:   "list-firewall-rules",
 		Short: "Retrieves the list of firewall rules and available options for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-firewall-rules", body)
 		},
 	}
@@ -1394,9 +1874,8 @@ func registerListIsosCmd(client *Client) *cobra.Command {
 		Use:   "list-isos",
 		Short: "Retrieves the list of available ISO images for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-isos", body)
 		},
 	}
@@ -1413,9 +1892,8 @@ func registerListNotificationsCmd(client *Client) *cobra.Command {
 		Use:   "list-notifications",
 		Short: "Retrieves the list of notifications for a VPS service along with dialog rules for creating notifications",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-notifications", body)
 		},
 	}
@@ -1431,8 +1909,7 @@ func registerListOrdersCmd(client *Client) *cobra.Command {
 		Use:   "list-orders",
 		Short: "Lists all orders for the authenticated user, including payment and invoice status",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/vps/list-orders", body)
 		},
 	}
@@ -1447,9 +1924,8 @@ func registerListPowerTasksCmd(client *Client) *cobra.Command {
 		Use:   "list-power-tasks",
 		Short: "Retrieves the list of power tasks (scheduled start/stop/restart operations) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-power-tasks", body)
 		},
 	}
@@ -1466,9 +1942,8 @@ func registerListReinstallOsCmd(client *Client) *cobra.Command {
 		Use:   "list-reinstall-os",
 		Short: "Retrieves the list of available OS images for VPS reinstallation",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-reinstall-images", body)
 		},
 	}
@@ -1485,9 +1960,8 @@ func registerListSnapshotJobsCmd(client *Client) *cobra.Command {
 		Use:   "list-snapshot-jobs",
 		Short: "Retrieves the list of snapshot jobs for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-snapshot-jobs", body)
 		},
 	}
@@ -1504,9 +1978,8 @@ func registerListSnapshotsCmd(client *Client) *cobra.Command {
 		Use:   "list-snapshots",
 		Short: "Retrieves the list of snapshots for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/list-snapshots", body)
 		},
 	}
@@ -1522,8 +1995,7 @@ func registerListVpsServicesCmd(client *Client) *cobra.Command {
 		Use:   "list-vps-services",
 		Short: "Lists all VPS services accessible by the authenticated user",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-			}
+			body := map[string]interface{}{}
 			return client.Do("POST", "/vps/list-vps-services", body)
 		},
 	}
@@ -1540,11 +2012,12 @@ func registerMountIsoCmd(client *Client) *cobra.Command {
 		Use:   "mount-iso",
 		Short: "Mounts an ISO image on a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"format_master_disk": flagformat_master_disk,
-				"iso": flagiso,
-				"service_id": flagservice_id,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("format_master_disk") {
+				body["format_master_disk"] = flagformat_master_disk
 			}
+			body["iso"] = flagiso
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/mount-iso", body)
 		},
 	}
@@ -1567,11 +2040,14 @@ func registerMoveFirewallRuleCmd(client *Client) *cobra.Command {
 		Use:   "move-firewall-rule",
 		Short: "Moves a firewall rule to a different position in the rule list. Supports both absolute positioning (target_pos) and relative movement (direction). Exactly one of target_pos or direction must be provided.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"direction": flagdirection,
-				"pos": flagpos,
-				"service_id": flagservice_id,
-				"target_pos": flagtarget_pos,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("direction") {
+				body["direction"] = flagdirection
+			}
+			body["pos"] = flagpos
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("target_pos") {
+				body["target_pos"] = flagtarget_pos
 			}
 			return client.Do("POST", "/vps/move-firewall-rule", body)
 		},
@@ -1593,9 +2069,8 @@ func registerGetNoVncConsoleCmd(client *Client) *cobra.Command {
 		Use:   "get-no-vnc-console",
 		Short: "Retrieves noVNC console access credentials and connection details for a VPS",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/novnc-console", body)
 		},
 	}
@@ -1612,9 +2087,8 @@ func registerRebootVpsCmd(client *Client) *cobra.Command {
 		Use:   "reboot-vps",
 		Short: "Gracefully reboot a VPS service. Sends ACPI reboot signal to guest OS",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/reboot", body)
 		},
 	}
@@ -1632,10 +2106,9 @@ func registerRestoreBackupCmd(client *Client) *cobra.Command {
 		Use:   "restore-backup",
 		Short: "Restores a VPS from a backup with the specified backup identifier",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"backup_id": flagbackup_id,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["backup_id"] = flagbackup_id
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/restore-backup", body)
 		},
 	}
@@ -1655,10 +2128,9 @@ func registerRetryPaymentCmd(client *Client) *cobra.Command {
 		Use:   "retry-payment",
 		Short: "Retries a failed or pending payment for an existing order",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"order_id": flagorder_id,
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["order_id"] = flagorder_id
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/retry-payment", body)
 		},
 	}
@@ -1678,10 +2150,9 @@ func registerRollbackSnapshotCmd(client *Client) *cobra.Command {
 		Use:   "rollback-snapshot",
 		Short: "Rolls back a VPS to a previous snapshot state",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-				"snapshot_name": flagsnapshot_name,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
+			body["snapshot_name"] = flagsnapshot_name
 			return client.Do("POST", "/vps/rollback-snapshot", body)
 		},
 	}
@@ -1700,9 +2171,8 @@ func registerShutdownVpsCmd(client *Client) *cobra.Command {
 		Use:   "shutdown-vps",
 		Short: "Gracefully shutdown a VPS service. Sends ACPI shutdown signal to guest OS",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/shutdown", body)
 		},
 	}
@@ -1719,9 +2189,8 @@ func registerStartVpsCmd(client *Client) *cobra.Command {
 		Use:   "start-vps",
 		Short: "Starts a stopped VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/start", body)
 		},
 	}
@@ -1738,9 +2207,8 @@ func registerStopVpsCmd(client *Client) *cobra.Command {
 		Use:   "stop-vps",
 		Short: "Hard stops a running VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/stop", body)
 		},
 	}
@@ -1758,10 +2226,9 @@ func registerTriggerReinstallCmd(client *Client) *cobra.Command {
 		Use:   "trigger-reinstall",
 		Short: "Triggers a VPS reinstallation with the specified OS template",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"service_id": flagservice_id,
-				"template": flagtemplate,
-			}
+			body := map[string]interface{}{}
+			body["service_id"] = flagservice_id
+			body["template"] = flagtemplate
 			return client.Do("POST", "/vps/trigger-reinstall", body)
 		},
 	}
@@ -1786,15 +2253,26 @@ func registerUpdateVpsConfigCmd(client *Client) *cobra.Command {
 		Use:   "update-vps-config",
 		Short: "Updates VPS configuration settings such as name, hostname, auto-start, boot order, and CD-ROM",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"auto_start": flagauto_start,
-				"boot": flagboot,
-				"cdrom": flagcdrom,
-				"hostname": flaghostname,
-				"ide2": flagide2,
-				"name": flagname,
-				"service_id": flagservice_id,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("auto_start") {
+				body["auto_start"] = flagauto_start
 			}
+			if cmd.Flags().Changed("boot") {
+				body["boot"] = flagboot
+			}
+			if cmd.Flags().Changed("cdrom") {
+				body["cdrom"] = flagcdrom
+			}
+			if cmd.Flags().Changed("hostname") {
+				body["hostname"] = flaghostname
+			}
+			if cmd.Flags().Changed("ide2") {
+				body["ide2"] = flagide2
+			}
+			if cmd.Flags().Changed("name") {
+				body["name"] = flagname
+			}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/update-config", body)
 		},
 	}
@@ -1820,12 +2298,15 @@ func registerUpdateFirewallRuleCmd(client *Client) *cobra.Command {
 		Use:   "update-firewall-rule",
 		Short: "Updates an existing firewall rule for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"comment": flagcomment,
-				"pos": flagpos,
-				"rule_action": flagrule_action,
-				"service_id": flagservice_id,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("comment") {
+				body["comment"] = flagcomment
 			}
+			body["pos"] = flagpos
+			if cmd.Flags().Changed("rule_action") {
+				body["rule_action"] = flagrule_action
+			}
+			body["service_id"] = flagservice_id
 			return client.Do("POST", "/vps/update-firewall-rule", body)
 		},
 	}
@@ -1858,24 +2339,45 @@ func registerUpdateNotificationCmd(client *Client) *cobra.Command {
 		Use:   "update-notification",
 		Short: "Updates an existing notification for a VPS service with customizable thresholds for CPU, memory, network, and disk metrics",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parsedemail_address json.RawMessage
-			if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
-				return fmt.Errorf("invalid JSON for --email_address: %w", err)
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("cpu_usage") {
+				body["cpu_usage"] = flagcpu_usage
 			}
-			body := map[string]interface{}{
-				"cpu_usage": flagcpu_usage,
-				"data_timeframe": flagdata_timeframe,
-				"disk_read": flagdisk_read,
-				"disk_write": flagdisk_write,
-				"email_address": parsedemail_address,
-				"exceed_all": flagexceed_all,
-				"memory_usage": flagmemory_usage,
-				"name": flagname,
-				"network_traffic": flagnetwork_traffic,
-				"notification_id": flagnotification_id,
-				"notification_interval": flagnotification_interval,
-				"service_id": flagservice_id,
-				"status": flagstatus,
+			if cmd.Flags().Changed("data_timeframe") {
+				body["data_timeframe"] = flagdata_timeframe
+			}
+			if cmd.Flags().Changed("disk_read") {
+				body["disk_read"] = flagdisk_read
+			}
+			if cmd.Flags().Changed("disk_write") {
+				body["disk_write"] = flagdisk_write
+			}
+			if cmd.Flags().Changed("email_address") {
+				var parsedemail_address json.RawMessage
+				if err := json.Unmarshal([]byte(flagemail_address), &parsedemail_address); err != nil {
+					return fmt.Errorf("invalid JSON for --email_address: %w", err)
+				}
+				body["email_address"] = parsedemail_address
+			}
+			if cmd.Flags().Changed("exceed_all") {
+				body["exceed_all"] = flagexceed_all
+			}
+			if cmd.Flags().Changed("memory_usage") {
+				body["memory_usage"] = flagmemory_usage
+			}
+			if cmd.Flags().Changed("name") {
+				body["name"] = flagname
+			}
+			if cmd.Flags().Changed("network_traffic") {
+				body["network_traffic"] = flagnetwork_traffic
+			}
+			body["notification_id"] = flagnotification_id
+			if cmd.Flags().Changed("notification_interval") {
+				body["notification_interval"] = flagnotification_interval
+			}
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("status") {
+				body["status"] = flagstatus
 			}
 			return client.Do("POST", "/vps/update-notification", body)
 		},
@@ -1918,25 +2420,46 @@ func registerUpdatePowerTaskCmd(client *Client) *cobra.Command {
 		Use:   "update-power-task",
 		Short: "Updates an existing power task (scheduled start/stop/restart operation) for a VPS service",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays json.RawMessage
-			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
-				return fmt.Errorf("invalid JSON for --days: %w", err)
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("days") {
+				var parseddays json.RawMessage
+				if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+					return fmt.Errorf("invalid JSON for --days: %w", err)
+				}
+				body["days"] = parseddays
 			}
-			body := map[string]interface{}{
-				"days": parseddays,
-				"description": flagdescription,
-				"end_date": flagend_date,
-				"end_time": flagend_time,
-				"job_hour": flagjob_hour,
-				"job_minutes": flagjob_minutes,
-				"job_time": flagjob_time,
-				"job_type": flagjob_type,
-				"power_task_action": flagpower_task_action,
-				"service_id": flagservice_id,
-				"start_date": flagstart_date,
-				"start_time": flagstart_time,
-				"task_id": flagtask_id,
+			if cmd.Flags().Changed("description") {
+				body["description"] = flagdescription
 			}
+			if cmd.Flags().Changed("end_date") {
+				body["end_date"] = flagend_date
+			}
+			if cmd.Flags().Changed("end_time") {
+				body["end_time"] = flagend_time
+			}
+			if cmd.Flags().Changed("job_hour") {
+				body["job_hour"] = flagjob_hour
+			}
+			if cmd.Flags().Changed("job_minutes") {
+				body["job_minutes"] = flagjob_minutes
+			}
+			if cmd.Flags().Changed("job_time") {
+				body["job_time"] = flagjob_time
+			}
+			if cmd.Flags().Changed("job_type") {
+				body["job_type"] = flagjob_type
+			}
+			if cmd.Flags().Changed("power_task_action") {
+				body["power_task_action"] = flagpower_task_action
+			}
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("start_date") {
+				body["start_date"] = flagstart_date
+			}
+			if cmd.Flags().Changed("start_time") {
+				body["start_time"] = flagstart_time
+			}
+			body["task_id"] = flagtask_id
 			return client.Do("POST", "/vps/update-power-task", body)
 		},
 	}
@@ -1968,11 +2491,12 @@ func registerUpdateSnapshotCmd(client *Client) *cobra.Command {
 		Use:   "update-snapshot",
 		Short: "Updates a snapshot's metadata",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			body := map[string]interface{}{
-				"description": flagdescription,
-				"service_id": flagservice_id,
-				"snapshot_name": flagsnapshot_name,
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("description") {
+				body["description"] = flagdescription
 			}
+			body["service_id"] = flagservice_id
+			body["snapshot_name"] = flagsnapshot_name
 			return client.Do("POST", "/vps/update-snapshot", body)
 		},
 	}
@@ -2000,20 +2524,33 @@ func registerUpdateSnapshotJobCmd(client *Client) *cobra.Command {
 		Use:   "update-snapshot-job",
 		Short: "Updates an existing snapshot job. Only provide fields you want to change.",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			var parseddays json.RawMessage
-			if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
-				return fmt.Errorf("invalid JSON for --days: %w", err)
+			body := map[string]interface{}{}
+			if cmd.Flags().Changed("days") {
+				var parseddays json.RawMessage
+				if err := json.Unmarshal([]byte(flagdays), &parseddays); err != nil {
+					return fmt.Errorf("invalid JSON for --days: %w", err)
+				}
+				body["days"] = parseddays
 			}
-			body := map[string]interface{}{
-				"days": parseddays,
-				"description": flagdescription,
-				"job_id": flagjob_id,
-				"name": flagname,
-				"period": flagperiod,
-				"run_every": flagrun_every,
-				"service_id": flagservice_id,
-				"start_time": flagstart_time,
-				"vmstate": flagvmstate,
+			if cmd.Flags().Changed("description") {
+				body["description"] = flagdescription
+			}
+			body["job_id"] = flagjob_id
+			if cmd.Flags().Changed("name") {
+				body["name"] = flagname
+			}
+			if cmd.Flags().Changed("period") {
+				body["period"] = flagperiod
+			}
+			if cmd.Flags().Changed("run_every") {
+				body["run_every"] = flagrun_every
+			}
+			body["service_id"] = flagservice_id
+			if cmd.Flags().Changed("start_time") {
+				body["start_time"] = flagstart_time
+			}
+			if cmd.Flags().Changed("vmstate") {
+				body["vmstate"] = flagvmstate
 			}
 			return client.Do("POST", "/vps/update-snapshot-job", body)
 		},
@@ -2041,13 +2578,14 @@ func registerValidatePricingCmd(client *Client) *cobra.Command {
 		Use:   "validate-pricing",
 		Short: "Validates pricing for one or more VPC service products, returning per-product breakdown and order summary",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			body := map[string]interface{}{}
 			var parsedproducts json.RawMessage
 			if err := json.Unmarshal([]byte(flagproducts), &parsedproducts); err != nil {
 				return fmt.Errorf("invalid JSON for --products: %w", err)
 			}
-			body := map[string]interface{}{
-				"products": parsedproducts,
-				"promo": flagpromo,
+			body["products"] = parsedproducts
+			if cmd.Flags().Changed("promo") {
+				body["promo"] = flagpromo
 			}
 			return client.Do("POST", "/vps/validate-pricing", body)
 		},
